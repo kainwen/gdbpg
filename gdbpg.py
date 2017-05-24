@@ -1132,7 +1132,6 @@ def format_op_expr(node, indent=0):
         'clauses': format_node_list(node['args'], 1, True)
     }
 
-
 def format_func_expr(node, indent=0):
 
     retval = """FuncExpr [funcid=%(funcid)s funcresulttype=%(funcresulttype)s funcretset=%(funcretset)s funcformat=%(funcformat)s""" % {
@@ -1185,11 +1184,11 @@ def format_coerce_via_io(node, indent=0):
 
 def format_scalar_array_op_expr(node, indent=0):
     return """ScalarArrayOpExpr [opno=%(opno)s opfuncid=%(opfuncid)s useOr=%(useOr)s]
-%(clauses)s""" % {
+%(args)s""" % {
         'opno': node['opno'],
         'opfuncid': node['opfuncid'],
         'useOr': (int(node['useOr']) == 1),
-        'clauses': format_node_list(node['args'], 1, True)
+        'args': format_node_list(node['args'], 1, True)
     }
 
 
