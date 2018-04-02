@@ -663,6 +663,12 @@ def format_node(node, indent=0):
 
         retval = format_op_expr(node)
 
+    elif is_a(node, 'FuncExpr'):
+
+        node = cast(node, 'FuncExpr')
+
+        retval = format_func_expr(node)
+
     elif is_a(node, 'CoerceViaIO'):
 
         node = cast(node, 'CoerceViaIO')
@@ -932,6 +938,26 @@ def format_op_expr(node, indent=0):
         'clauses': format_node_list(node['args'], 1, True)
     }
 
+
+def format_func_expr(node, indent=0):
+
+    retval = """FuncExpr [funcid=%(funcid)s funcresulttype=%(funcresulttype)s funcretset=%(funcretset)s funcformat=%(funcformat)s""" % {
+        'funcid': node['funcid'],
+        'funcresulttype': node['funcresulttype'],
+        'funcretset': (int(node['funcretset']) == 1),
+        'funcformat': node['funcformat'],
+    }
+
+    retval += ' location=%(location)s is_tablefunc=%(is_tablefunc)s]\n' % {
+        'location': node['location'],
+        'is_tablefunc': (int(node['is_tablefunc']) == 1),
+    }
+
+    retval += """%(args)s""" % {
+        'args': format_node_list(node['args'], 1, True)
+    }
+
+    return add_indent(retval, indent)
 
 def format_coerce_via_io(node, indent=0):
 
