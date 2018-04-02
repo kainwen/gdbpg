@@ -578,13 +578,15 @@ def format_node(node, indent=0):
         if str(name_ptr) != '0x0':
             name = '"' + (name_ptr.string()) + '"'
 
-        retval = 'TargetEntry (resno=%(resno)s resname=%(name)s origtbl=%(tbl)s origcol=%(col)s junk=%(junk)s expr=[%(expr)s])' % {
+        retval = 'TargetEntry (resno=%(resno)s resname=%(name)s origtbl=%(tbl)s origcol=%(col)s junk=%(junk)s])' % {
             'resno': node['resno'],
             'name': name,
             'tbl': node['resorigtbl'],
             'col': node['resorigcol'],
             'junk': (int(node['resjunk']) == 1),
-            'expr': format_node(node['expr'])
+        }
+        retval += "\n%(expr)s" % {
+            'expr': format_node(node['expr'], 1)
         }
 
     elif is_a(node, 'Var'):
