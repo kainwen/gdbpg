@@ -113,6 +113,20 @@ def format_plan_tree(tree, indent=0):
                     'hashqualclauses': format_node_list(hashjoin['hashqualclauses'], 2, True)
                 }
 
+    if is_a(tree, 'FunctionScan'):
+        functionscan = cast(tree, 'FunctionScan')
+        if str(functionscan['funcexpr']) != '0x0':
+            # Resconstant qual might be a list
+            retval+='\n\tfuncexpr:\n%(funcexpr)s' % {
+                'funcexpr': format_node(functionscan['funcexpr'], 2)
+            }
+
+        if str(functionscan['funccolnames']) != '0x0':
+            # Resconstant qual might be a list
+            retval+='\n\tfunccolnames: %(funccolnames)s' % {
+                'funccolnames': format_node_list(functionscan['funccolnames'])
+            }
+
     if is_a(tree, 'Append'):
         append = cast(tree, 'Append')
         retval += '''
