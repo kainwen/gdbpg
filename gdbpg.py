@@ -615,14 +615,25 @@ def format_node(node, indent=0):
     elif is_a(node, 'Aggref'):
         node = cast(node, 'Aggref')
 
-        retval = '''Aggref (aggfnoid=%(fnoid)s aggtype=%(aggtype)s aggstage=%(stage)s)
-\tAggref Args:
-%(args)s''' % {
+        retval = '''Aggref (aggfnoid=%(fnoid)s aggtype=%(aggtype)s''' % {
             'fnoid': node['aggfnoid'],
             'aggtype': node['aggtype'],
-            'stage': node['aggstage'],
-            'args': format_node_list(node['args'], 2, True)
         }
+
+        retval += ''' aggstar=%(aggstar)s agglevelsup=%(agglevelsup)s aggstage=%(aggstage)s location=%(location)s)''' % {
+            'aggstar': (int(node['aggstar']) == 1),
+            'agglevelsup': node['agglevelsup'],
+            'aggstage': node['aggstage'],
+            'location': node['location'],
+        }
+
+        if str(node['args']) != '0x0':
+            retval += '\n\targs:'
+            retval += '\n%s' % format_node_list(node['args'], 2, True)
+
+        if str(node['aggorder']) != '0x0':
+            retval += '\n\taggorder:'
+            retval += '\n%s' % format_node_list(node['aggorder'], 2, True)
 
     elif is_a(node, 'CaseExpr'):
         node = cast(node, 'CaseExpr')
