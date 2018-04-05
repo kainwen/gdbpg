@@ -21,20 +21,17 @@ def format_plan_tree(tree, indent=0):
     node_extra = ''
     if is_a(tree, 'Scan') or is_a(tree, 'SeqScan') or is_a(tree, 'TableScan'):
         scan = cast(tree, 'Scan')
-        node_extra += '   <scanrelid=%(scanrelid)s partIndex=%(partIndex)s partIndexPrintable=%(partIndexPrintable)s>\n' % {
+        node_extra += '   <scanrelid=%(scanrelid)s>\n' % {
             'scanrelid': scan['scanrelid'],
-            'partIndex': scan['partIndex'],
-            'partIndexPrintable': scan['partIndexPrintable'],
         }
 
-    retval = '''\n-> %(type)s (cost=%(startup).3f...%(total).3f rows=%(rows)s width=%(width)s) id=%(plan_node_id)s\n''' % {
+    retval = '''\n-> %(type)s (cost=%(startup).3f...%(total).3f rows=%(rows)s width=%(width)s)\n''' % {
         'type': format_type(tree['type']),    # type of the Node
         'node_extra': node_extra,
         'startup': float(tree['startup_cost']),    # startup cost
         'total': float(tree['total_cost']),    # total cost
         'rows': str(tree['plan_rows']),    # number of rows
         'width': str(tree['plan_width']),    # tuple width (no header)
-        'plan_node_id': str(tree['plan_node_id']),
     }
 
     retval += node_extra
@@ -665,18 +662,11 @@ def format_node(node, indent=0):
         if node['inputcollid'] != 0:
             retval += ' inputcollid=%s' % node['inputcollid']
 
-        retval += ''' aggstar=%(aggstar)s aggvariadic=%(aggvariadic)s aggkind='%(aggkind)s' agglevelsup=%(agglevelsup)s aggstage=%(aggstage)s location=%(location)s)''' % {
+        retval += ''' aggstar=%(aggstar)s agglevelsup=%(agglevelsup)s location=%(location)s)''' % {
             'aggstar': (int(node['aggstar']) == 1),
-            'aggvariadic': (int(node['aggvariadic']) == 1),
-            'aggkind': format_char(node['aggkind']),
             'agglevelsup': node['agglevelsup'],
-            'aggstage': node['aggstage'],
             'location': node['location'],
         }
-
-        if str(node['aggdirectargs']) != '0x0':
-            retval += '\n\taggdirectargs:'
-            retval += '\n%s' % format_node_list(node['aggdirectargs'], 2, True)
 
         if str(node['args']) != '0x0':
             retval += '\n\targs:'
@@ -685,10 +675,6 @@ def format_node(node, indent=0):
         if str(node['aggorder']) != '0x0':
             retval += '\n\taggorder:'
             retval += '\n%s' % format_node_list(node['aggorder'], 2, True)
-
-        if str(node['aggfilter']) != '0x0':
-            retval += '\n\taggfilter:'
-            retval += '\n%s' % format_node(node['aggfilter'], 2)
 
     elif is_a(node, 'CaseExpr'):
         node = cast(node, 'CaseExpr')
@@ -1004,7 +990,6 @@ rte:
 def format_planned_stmt(plan, indent=0):
 
     retval = '''          type: %(type)s
-       planGen: %(planGen)s
    can set tag: %(can_set_tag)s
      transient: %(transient)s
                
@@ -1016,7 +1001,6 @@ def format_planned_stmt(plan, indent=0):
   utility stmt: %(util_stmt)s
       subplans: %(subplans)s''' % {
         'type': plan['commandType'],
-        'planGen': plan['planGen'],
     #'qid' : plan['queryId'],
     #'nparam' : plan['nParamExec'],
     #'has_returning' : (int(plan['hasReturning']) == 1),
@@ -1074,7 +1058,6 @@ def format_func_expr(node, indent=0):
         'funcid': node['funcid'],
         'funcresulttype': node['funcresulttype'],
         'funcretset': (int(node['funcretset']) == 1),
-        'funcvaridaic': (int(node['funcvariadic']) == 1),
         'funcformat': node['funcformat'],
     }
 
@@ -1083,9 +1066,8 @@ def format_func_expr(node, indent=0):
     if node['inputcollid'] != 0:
         retval += ' inputcollid=%s' % node['inputcollid']
 
-    retval += ' location=%(location)s is_tablefunc=%(is_tablefunc)s]\n' % {
+    retval += ' location=%(location)s]\n' % {
         'location': node['location'],
-        'is_tablefunc': (int(node['is_tablefunc']) == 1),
     }
 
     retval += """%(args)s""" % {
