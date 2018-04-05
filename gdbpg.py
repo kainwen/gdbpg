@@ -18,17 +18,29 @@ def format_plan_tree(tree, indent=0):
     if (str(tree) == '0x0'):
         return '-> (NULL)'
 
-    retval = '''
--> %(type)s (cost=%(startup).3f...%(total).3f rows=%(rows)s width=%(width)s) id=%(plan_node_id)s
-\ttarget list:
-%(target)s''' % {
+    node_extra = ''
+    if is_a(tree, 'Scan') or is_a(tree, 'SeqScan') or is_a(tree, 'TableScan'):
+        scan = cast(tree, 'Scan')
+        node_extra += '   <scanrelid=%(scanrelid)s partIndex=%(partIndex)s partIndexPrintable=%(partIndexPrintable)s>\n' % {
+            'scanrelid': scan['scanrelid'],
+            'partIndex': scan['partIndex'],
+            'partIndexPrintable': scan['partIndexPrintable'],
+        }
+
+    retval = '''\n-> %(type)s (cost=%(startup).3f...%(total).3f rows=%(rows)s width=%(width)s) id=%(plan_node_id)s\n''' % {
         'type': format_type(tree['type']),    # type of the Node
+        'node_extra': node_extra,
         'startup': float(tree['startup_cost']),    # startup cost
         'total': float(tree['total_cost']),    # total cost
         'rows': str(tree['plan_rows']),    # number of rows
         'width': str(tree['plan_width']),    # tuple width (no header)
         'plan_node_id': str(tree['plan_node_id']),
+    }
 
+    retval += node_extra
+
+    retval += '''\ttarget list:
+%(target)s''' % {
         # format target list
         'target': format_node_list(tree['targetlist'], 2, True)
         }
