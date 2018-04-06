@@ -34,6 +34,12 @@ def format_plan_tree(tree, indent=0):
             'prefetch_inner': (int(join['prefetch_inner']) == 1),
         }
 
+    if is_a(tree, 'Hash'):
+        hash = cast(tree, 'Hash')
+        node_extra += '   <rescannable=%(rescannable)s>\n' %{
+            'rescannable': (int(hash['rescannable']) == 1),
+        }
+
     retval = '''\n-> %(type)s (cost=%(startup).3f...%(total).3f rows=%(rows)s width=%(width)s) id=%(plan_node_id)s\n''' % {
         'type': format_type(tree['type']),    # type of the Node
         'node_extra': node_extra,
