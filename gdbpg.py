@@ -27,6 +27,13 @@ def format_plan_tree(tree, indent=0):
             'partIndexPrintable': scan['partIndexPrintable'],
         }
 
+    if is_a(tree, 'HashJoin') or is_a(tree, 'Join') or is_a(tree, 'NestLoop') or is_a(tree, 'MergeJoin'):
+        join = cast(tree, 'Join')
+        node_extra += '   <jointype=%(jointype)s prefetch_inner=%(prefetch_inner)s>\n' % {
+            'jointype': join['jointype'],
+            'prefetch_inner': (int(join['prefetch_inner']) == 1),
+        }
+
     retval = '''\n-> %(type)s (cost=%(startup).3f...%(total).3f rows=%(rows)s width=%(width)s) id=%(plan_node_id)s\n''' % {
         'type': format_type(tree['type']),    # type of the Node
         'node_extra': node_extra,
@@ -83,6 +90,22 @@ def format_plan_tree(tree, indent=0):
 %(joinqual)s''' % {
                 'joinqual': format_node_list(join['joinqual'], 2, True)
             }
+        if is_a(tree, 'HashJoin'):
+            hashjoin = cast(tree, 'HashJoin')
+
+            if str(hashjoin['hashclauses']) != '0x0':
+                retval += '\n\thashclauses:' \
+
+                retval += '\n%(hashclauses)s' % {
+                    'hashclauses': format_node_list(hashjoin['hashclauses'], 2, True)
+                }
+
+            if str(hashjoin['hashqualclauses']) != '0x0':
+                retval += '\n\thashqualclauses:' \
+
+                retval += '\n%(hashqualclauses)s' % {
+                    'hashqualclauses': format_node_list(hashjoin['hashqualclauses'], 2, True)
+                }
 
     if is_a(tree, 'Append'):
         append = cast(tree, 'Append')
