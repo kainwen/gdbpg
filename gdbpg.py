@@ -25,6 +25,12 @@ def format_plan_tree(tree, indent=0):
             'scanrelid': scan['scanrelid'],
         }
 
+    if is_a(tree, 'HashJoin') or is_a(tree, 'Join') or is_a(tree, 'NestLoop') or is_a(tree, 'MergeJoin'):
+        join = cast(tree, 'Join')
+        node_extra += '   <jointype=%(jointype)s>\n' % {
+            'jointype': join['jointype'],
+        }
+
     retval = '''\n-> %(type)s (cost=%(startup).3f...%(total).3f rows=%(rows)s width=%(width)s)\n''' % {
         'type': format_type(tree['type']),    # type of the Node
         'node_extra': node_extra,
@@ -80,6 +86,16 @@ def format_plan_tree(tree, indent=0):
 %(joinqual)s''' % {
                 'joinqual': format_node_list(join['joinqual'], 2, True)
             }
+        if is_a(tree, 'HashJoin'):
+            hashjoin = cast(tree, 'HashJoin')
+
+            if str(hashjoin['hashclauses']) != '0x0':
+                retval += '\n\thashclauses:' \
+
+                retval += '\n%(hashclauses)s' % {
+                    'hashclauses': format_node_list(hashjoin['hashclauses'], 2, True)
+                }
+
 
     if is_a(tree, 'Sort'):
         append = cast(tree, 'Sort')
