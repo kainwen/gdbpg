@@ -31,6 +31,16 @@ def format_plan_tree(tree, indent=0):
             'jointype': join['jointype'],
         }
 
+    if is_a(tree, 'Hash'):
+        hash = cast(tree, 'Hash')
+        node_extra += '   <skewTable=%(skewTable)s skewColumn=%(skewColumn)s skewInherit=%(skewInherit)s skewColType=%(skewColType)s skewColTypmod=%(skewColTypmod)s>\n' %{
+            'skewTable': hash['skewTable'],
+            'skewColumn': hash['skewColumn'],
+            'skewInherit': (int(hash['skewInherit']) == 1),
+            'skewColType': hash['skewColType'],
+            'skewColTypmod': hash['skewColTypmod'],
+        }
+
     retval = '''\n-> %(type)s (cost=%(startup).3f...%(total).3f rows=%(rows)s width=%(width)s)\n''' % {
         'type': format_type(tree['type']),    # type of the Node
         'node_extra': node_extra,
