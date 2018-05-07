@@ -41,6 +41,12 @@ def format_plan_tree(tree, indent=0):
             'skewColTypmod': hash['skewColTypmod'],
         }
 
+    if is_a(tree, 'Sort'):
+        sort = cast(tree, 'Sort')
+        node_extra += '   <numCols=%(numCols)s>\n' %  {
+            'numCols': sort['numCols'],
+        }
+
     if is_a(tree, 'SetOp'):
         setop = cast(tree, 'SetOp')
         node_extra += '   <cmd=%(cmd)s strategy=%(strategy)s numCols=%(numCols)s flagColIdx=%(flagColIdx)s firstFlag=%(firstFlag)s numGroups=%(numGroups)s>\n' % {
@@ -127,9 +133,10 @@ def format_plan_tree(tree, indent=0):
 
         index = ''
         for col in range(0,numcols):
-            index += '[sortColIdx=%(sortColIdx)s collations=%(collations)s, nullsFirst=%(nullsFirst)s]' % {
+            index += '[sortColIdx=%(sortColIdx)s sortOperator=%(sortOperator)s collation=%(collation)s, nullsFirst=%(nullsFirst)s]' % {
                 'sortColIdx': append['sortColIdx'][col],
-                'collations': append['collations'][col],
+                'sortOperator': append['sortOperators'][col],
+                'collation': append['collations'][col],
                 'nullsFirst': append['nullsFirst'][col]
             }
             if col < numcols-1:
