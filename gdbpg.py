@@ -40,6 +40,18 @@ def format_plan_tree(tree, indent=0):
             'rescannable': (int(hash['rescannable']) == 1),
         }
 
+    if is_a(tree, 'Sort'):
+        sort = cast(tree, 'Sort')
+        node_extra += '   <numCols=%(numCols)s noduplicates=%(noduplicates)s share_type=%(share_type)s share_id=%(share_id)s driver_slice=%(driver_slice)s nsharer=%(nsharer)s nsharer_xslice=%(nsharer_xslice)s>\n' % {
+            'numCols': sort['numCols'],
+            'noduplicates': (int(sort['noduplicates']) == 1),
+            'share_type': sort['share_type'],
+            'share_id': sort['share_id'],
+            'driver_slice': sort['driver_slice'],
+            'nsharer': sort['nsharer'],
+            'nsharer_xslice': sort['nsharer_xslice'],
+        }
+
     if is_a(tree, 'SetOp'):
         setop = cast(tree, 'SetOp')
         node_extra += '   <cmd=%(cmd)s numCols=%(numCols)s flagColIdx=%(flagColIdx)s>\n' % {
@@ -120,6 +132,25 @@ def format_plan_tree(tree, indent=0):
                 retval += '\n%(hashqualclauses)s' % {
                     'hashqualclauses': format_node_list(hashjoin['hashqualclauses'], 2, True)
                 }
+
+    if is_a(tree, 'Sort'):
+        append = cast(tree, 'Sort')
+        numcols = int(append['numCols'])
+
+        retval += '\n\tSort Indexes:\n'
+
+
+        index = ''
+        for col in range(0,numcols):
+            index += '[sortColIdx=%(sortColIdx)s sortOperator=%(sortOperator)s nullsFirst=%(nullsFirst)s]' % {
+                'sortColIdx': append['sortColIdx'][col],
+                'sortOperator': append['sortOperators'][col],
+                'nullsFirst': append['nullsFirst'][col]
+            }
+            if col < numcols-1:
+                index += '\n'
+
+        retval += add_indent(index, 2)
 
     if is_a(tree, 'SetOp'):
         setop = cast(tree, 'SetOp')
