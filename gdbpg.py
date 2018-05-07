@@ -41,6 +41,17 @@ def format_plan_tree(tree, indent=0):
             'skewColTypmod': hash['skewColTypmod'],
         }
 
+    if is_a(tree, 'SetOp'):
+        setop = cast(tree, 'SetOp')
+        node_extra += '   <cmd=%(cmd)s strategy=%(strategy)s numCols=%(numCols)s flagColIdx=%(flagColIdx)s firstFlag=%(firstFlag)s numGroups=%(numGroups)s>\n' % {
+            'cmd': setop['cmd'],
+            'strategy': setop['strategy'],
+            'numCols': setop['numCols'],
+            'flagColIdx': setop['flagColIdx'],
+            'firstFlag': setop['firstFlag'],
+            'numGroups': setop['numGroups']
+        }
+
     retval = '''\n-> %(type)s (cost=%(startup).3f...%(total).3f rows=%(rows)s width=%(width)s)\n''' % {
         'type': format_type(tree['type']),    # type of the Node
         'node_extra': node_extra,
@@ -126,6 +137,23 @@ def format_plan_tree(tree, indent=0):
 
         retval += add_indent(index, 2)
 
+    if is_a(tree, 'SetOp'):
+        setop = cast(tree, 'SetOp')
+        numcols = int(setop['numCols'])
+
+        retval += '\n\tOperators:\n'
+
+
+        index = ''
+        for col in range(0,numcols):
+            index += '[dupColIdx=%(dupColIdx)s dupOperator=%(dupOperator)s]' % {
+                'dupColIdx': setop['dupColIdx'][col],
+                'dupOperator': setop['dupOperators'][col],
+            }
+            if col < numcols-1:
+                index += '\n'
+
+        retval += add_indent(index, 2)
 
     if is_a(tree, 'FunctionScan'):
         functionscan = cast(tree, 'FunctionScan')
