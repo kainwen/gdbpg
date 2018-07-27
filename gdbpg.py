@@ -680,11 +680,7 @@ def format_node(node, indent=0):
 
         node = cast(node, 'RangeTblEntry')
 
-        retval = 'RangeTblEntry (kind=%(rtekind)s relid=%(relid)s)' % {
-            'relid': node['relid'],
-            'rtekind': node['rtekind']
-    #'relkind' : format_char(node['relkind'])
-        }
+        retval = format_rte(node)
 
     elif is_a(node, 'GenericExprState'):
 
@@ -984,6 +980,14 @@ def format_planned_stmt(plan, indent=0):
         'result_rels': format_int_list(plan['resultRelations']),
         'util_stmt': format_node(plan['utilityStmt']),
         'subplans': format_node_list(plan['subplans'], 1, True)
+    }
+
+    return add_indent(retval, indent)
+
+def format_rte(node, indent=0):
+    retval = 'RangeTblEntry (rtekind=%(rtekind)s relid=%(relid)s)' % {
+        'relid': node['relid'],
+        'rtekind': node['rtekind'],
     }
 
     return add_indent(retval, indent)
