@@ -629,6 +629,8 @@ def format_node(node, indent=0):
 
     elif is_a(node, 'PlannedStmt'):
 
+        node = cast(node, 'PlannedStmt')
+
         retval = format_planned_stmt(node)
 
     elif is_a(node, 'List'):
