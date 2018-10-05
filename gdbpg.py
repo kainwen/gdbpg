@@ -669,6 +669,12 @@ def format_node(node, indent=0):
 
         retval = format_func_expr(node)
 
+    elif is_a(node, 'RelabelType'):
+
+        node = cast(node, 'RelabelType')
+
+        retval = format_relabel_type(node)
+
     elif is_a(node, 'CoerceViaIO'):
 
         node = cast(node, 'CoerceViaIO')
@@ -955,6 +961,21 @@ def format_func_expr(node, indent=0):
 
     retval += """%(args)s""" % {
         'args': format_node_list(node['args'], 1, True)
+    }
+
+    return add_indent(retval, indent)
+
+def format_relabel_type(node, indent=0):
+
+    retval = """RelabelType [resulttype=%(resulttype)s resulttypmod=%(resulttypmod)s relabelformat=%(relabelformat)s location=%(location)s]\n""" % {
+        'resulttype': node['resulttype'],
+        'resulttypmod': node['resulttypmod'],
+        'relabelformat': node['relabelformat'],
+        'location': node['location'],
+    }
+
+    retval += """%(arg)s""" % {
+        'arg': format_node(node['arg'], 1)
     }
 
     return add_indent(retval, indent)
