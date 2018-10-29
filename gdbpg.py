@@ -76,6 +76,20 @@ def format_plan_tree(tree, indent=0):
             'flagColIdx': setop['flagColIdx'],
         }
 
+    if is_a(tree, 'Motion'):
+        motion= cast(tree, 'Motion')
+        node_extra += '   <motionType=%(motionType)s sendSorted=%(sendSorted)s motionID=%(motionID)s numOutputSegs=%(numOutputSegs)s outputSegIdx=%(outputSegIdx)s segidColIdx=%(segidColIdx)s nullsFirst=%(nullsFirst)s>\n' % {
+            'motionType': motion['motionType'],
+            'sendSorted': (int(motion['sendSorted']) == 1),
+            'motionID': motion['motionID'],
+            'numOutputSegs': motion['numOutputSegs'],
+            'outputSegIdx': motion['outputSegIdx'],
+            'segidColIdx': motion['segidColIdx'],
+            'nullsFirst': motion['nullsFirst'],
+        }
+
+
+
     retval = '''\n-> %(type)s (cost=%(startup).3f...%(total).3f rows=%(rows)s width=%(width)s) id=%(plan_node_id)s\n''' % {
         'type': format_type(tree['type']),    # type of the Node
         'node_extra': node_extra,
