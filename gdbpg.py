@@ -46,20 +46,16 @@ def format_plan_tree(tree, indent=0):
 
     if is_a(tree, 'HashJoin') or is_a(tree, 'Join') or is_a(tree, 'NestLoop') or is_a(tree, 'MergeJoin'):
         join = cast(tree, 'Join')
-        node_extra += '<jointype=%(jointype)s prefetch_inner=%(prefetch_inner)s>' % {
+        node_extra += '<jointype=%(jointype)s>' % {
             'jointype': join['jointype'],
-            'prefetch_inner': (int(join['prefetch_inner']) == 1),
         }
 
     if is_a(tree, 'Hash'):
         hash = cast(tree, 'Hash')
-        node_extra += '<rescannable=%(rescannable)s skewTable=%(skewTable)s skewColumn=%(skewColumn)s skewInherit=%(skewInherit)s skewColType=%(skewColType)s skewColTypmod=%(skewColTypmod)s>' %{
-            'rescannable': (int(hash['rescannable']) == 1),
+        node_extra += '<skewTable=%(skewTable)s skewColumn=%(skewColumn)s skewInherit=%(skewInherit)s>' %{
             'skewTable': hash['skewTable'],
             'skewColumn': hash['skewColumn'],
             'skewInherit': (int(hash['skewInherit']) == 1),
-            'skewColType': hash['skewColType'],
-            'skewColTypmod': hash['skewColTypmod'],
         }
 
     if is_a(tree, 'Sort'):
@@ -76,20 +72,10 @@ def format_plan_tree(tree, indent=0):
 
     if is_a(tree, 'Agg'):
         agg = cast(tree, 'Agg')
-        node_extra += '<aggstrategy=%(aggstrategy)s numCols=%(numCols)s combineStates=%(combineStates)s finalizeAggs=%(finalizeAggs)s numGroups=%(numGroups)s transSpace=%(transSpace)s numNullCols=%(numNullCols)s inputGrouping=%(inputGrouping)s grouping=%(grouping)s inputHasGrouping=%(inputHasGrouping)s rollupGSTimes=%(rollupGSTimes)s lastAgg=%(lastAgg)s streaming=%(streaming)s aggParams=%(aggParams)s>' % {
+        node_extra += '<aggstrategy=%(aggstrategy)s numCols=%(numCols)s numGroups=%(numGroups)s aggParams=%(aggParams)s>' % {
             'aggstrategy': agg['aggstrategy'],
             'numCols': agg['numCols'],
-            'combineStates': (int(agg['combineStates']) == 1),
-            'finalizeAggs': (int(agg['finalizeAggs']) == 1),
             'numGroups': agg['numGroups'],
-            'transSpace': agg['transSpace'],
-            'numNullCols': agg['numNullCols'],
-            'inputGrouping': agg['inputGrouping'],
-            'grouping': agg['grouping'],
-            'inputHasGrouping': (int(agg['inputHasGrouping']) == 1),
-            'rollupGSTimes': agg['rollupGSTimes'],
-            'lastAgg': (int(agg['lastAgg']) == 1),
-            'streaming': (int(agg['streaming']) == 1),
             'aggParams': format_bitmapset(agg['aggParams']),
         }
 
@@ -164,9 +150,6 @@ def format_plan_tree(tree, indent=0):
             hashfunctionoids +=']'
 
             retval += add_indent(hashfunctionoids, 2, True)
-
-            retval += '\n'
-            retval += format_node_list(motion['hashExprs'], 2, True)
 
 
     if is_a(tree, 'HashJoin') or is_a(tree, 'Join') or is_a(tree, 'NestLoop') or is_a(tree, 'MergeJoin'):
@@ -325,12 +308,10 @@ def format_appendplan_list(lst, indent):
     return add_indent(retval, indent + 1)
 
 def format_alter_table_cmd(node, indent=0):
-    retval = '''AlterTableCmd (subtype=%(subtype)s name=%(name)s behavior=%(behavior)s part_expanded=%(part_expanded)s missing_ok=%(missing_ok)s)''' % {
+    retval = '''AlterTableCmd (subtype=%(subtype)s name=%(name)s behavior=%(behavior)s)''' % {
         'subtype': node['subtype'],
         'name': getchars(node['name']),
         'behavior': node['behavior'],
-        'part_expanded': (int(node['part_expanded']) == 1),
-        'missing_ok': (int(node['missing_ok']) == 1),
     }
 
     retval += format_optional_node_field(node, 'def')
@@ -590,9 +571,8 @@ def format_type_name(node, indent=0):
     if (str(node) == '0x0'):
         return '(NIL)'
 
-    retval = 'TypeName [typeOid=%(typeOid)s timezone=%(timezone)s setof=%(setof)s pct_type=%(pct_type)s typemod=%(typemod)s location=%(location)s]' % {
+    retval = 'TypeName [typeOid=%(typeOid)s setof=%(setof)s pct_type=%(pct_type)s typemod=%(typemod)s location=%(location)s]' % {
         'typeOid': node['typeOid'],
-        'timezone': (int(node['timezone']) == 1),
         'setof': (int(node['setof']) == 1),
         'pct_type': (int(node['pct_type']) == 1),
         'typemod': node['typemod'],
@@ -706,16 +686,21 @@ def format_oid_list(lst, indent=0):
 
     # we'll collect the formatted items into a Python list
     tlist = []
-    item = lst['head']
+    try:
+        item = lst['head']
 
-    # walk the list until we reach the last item
-    while str(item) != '0x0':
+        # walk the list until we reach the last item
+        while str(item) != '0x0':
 
-        # get item from the list and just grab 'oid_value as int'
-        tlist.append(int(item['data']['oid_value']))
+            # get item from the list and just grab 'oid_value as int'
+            tlist.append(int(item['data']['oid_value']))
 
-        # next item
-        item = item['next']
+            # next item
+            item = item['next']
+    except:
+        for col in range(0, lst['length']):
+            element = lst['elements'][col]
+            tlist.append(int(element['oid_value']))
 
     return add_indent(str(tlist), indent)
 
@@ -729,20 +714,27 @@ def format_node_list(lst, indent=0, newline=False):
 
     # we'll collect the formatted items into a Python list
     tlist = []
-    item = lst['head']
 
-    # walk the list until we reach the last item
-    while str(item) != '0x0':
+    try:
+        item = lst['head']
 
-        # we assume the list contains Node instances, so grab a reference
-        # and cast it to (Node*)
-        node = cast(item['data']['ptr_value'], 'Node')
+        # walk the list until we reach the last item
+        while str(item) != '0x0':
 
-        # append the formatted Node to the result list
-        tlist.append(format_node(node))
+            # we assume the list contains Node instances, so grab a reference
+            # and cast it to (Node*)
+            node = cast(item['data']['ptr_value'], 'Node')
 
-        # next item
-        item = item['next']
+            # append the formatted Node to the result list
+            tlist.append(format_node(node))
+
+            # next item
+            item = item['next']
+    except:
+        for col in range(0, lst['length']):
+            element = lst['elements'][col]
+            node = cast(element['ptr_value'], 'Node')
+            tlist.append(format_node(node))
 
     retval = str(tlist)
     if newline:
@@ -1150,7 +1142,6 @@ rte:
 def format_planned_stmt(plan, indent=0):
 
     retval = '''          type: %(type)s
-       planGen: %(planGen)s
    can set tag: %(can_set_tag)s
      transient: %(transient)s
                
@@ -1162,7 +1153,6 @@ def format_planned_stmt(plan, indent=0):
   utility stmt: %(util_stmt)s
       subplans: %(subplans)s''' % {
         'type': plan['commandType'],
-        'planGen': plan['planGen'],
     #'qid' : plan['queryId'],
     #'nparam' : plan['nParamExec'],
     #'has_returning' : (int(plan['hasReturning']) == 1),
@@ -1181,46 +1171,32 @@ def format_planned_stmt(plan, indent=0):
     return add_indent(retval, indent)
 
 def format_create_stmt(node, indent=0):
-    retval = 'CreateStmt [parentOidCount=%(parentOidCount)s oncommit=%(oncommit)s tablespacename=%(tablespacename)s if_not_exists=%(if_not_exists)s relKind=%(relKind)s\n            relStorage=%(relStorage)s is_part_child=%(is_part_child)s is_add_part=%(is_add_part)s is_split_part=%(is_split_part)s ownerid=%(ownerid)s buildAoBlkdir=%(buildAoBlkdir)s]' % {
-        'parentOidCount': node['parentOidCount'],
+    retval = 'CreateStmt [oncommit=%(oncommit)s tablespacename=%(tablespacename)s if_not_exists=%(if_not_exists)s]' % {
         'oncommit': node['oncommit'],
         'tablespacename': node['tablespacename'],
         'if_not_exists': (int(node['if_not_exists']) == 1),
-        'relKind': node['relKind'],
-        'relStorage': node['relStorage'],
-        'is_part_child': (int(node['is_part_child']) == 1),
-        'is_part_parent': (int(node['is_part_parent']) == 1),
-        'is_add_part': (int(node['is_add_part']) == 1),
-        'is_split_part': (int(node['is_split_part']) == 1),
-        'ownerid': node['ownerid'],
-        'buildAoBlkdir': (int(node['buildAoBlkdir']) == 1),
         }
 
     retval += add_indent('[relation] %s' % format_node(node['relation'], 0), 1, True)
 
     retval += add_indent('[tableElts] %s' % format_node_list(node['tableElts'], 0, True), 1, True)
 
-    if (str(node['inhOids']) != '0x0'):
-        retval += add_indent('[inhOids] %s' % format_oid_list(node['inhOids']), 1, True)
+    if (str(node['inhRelations']) != '0x0'):
+        retval += add_indent('[inhRelations] %s' % format_oid_list(node['inhRelations']), 1, True)
 
     retval += format_optional_node_field(node, 'ofTypename')
     retval += format_optional_node_list(node, 'constraints')
     retval += format_optional_node_list(node, 'options', newLine=False)
-    retval += format_optional_node_field(node, 'distributedBy')
-    retval += format_optional_node_field(node, 'partitionBy')
-    retval += format_optional_node_field(node, 'postCreate')
 
     return add_indent(retval, indent)
 
 def format_index_stmt(node, indent=0):
-    retval = 'IndexStmt [idxname=%(idxname)s relationOid=%(relationOid)s accessMethod=%(accessMethod)s tableSpace=%(tableSpace)s idxcomment=%(idxcomment)s indexOid=%(indexOid)s is_part_child=%(is_part_child)s oldNode=%(oldNode)s\n           unique=%(unique)s primary=%(primary)s isconstraint=%(isconstraint)s deferrable=%(deferrable)s initdeferred=%(initdeferred)s concurrent=%(concurrent)s is_split_part=%(is_split_part)s parentIndexId=%(parentIndexId)s parentConstraintId=%(parentConstraintId)s]' % {
+    retval = 'IndexStmt [idxname=%(idxname)s accessMethod=%(accessMethod)s tableSpace=%(tableSpace)s idxcomment=%(idxcomment)s indexOid=%(indexOid)s oldNode=%(oldNode)s unique=%(unique)s primary=%(primary)s isconstraint=%(isconstraint)s deferrable=%(deferrable)s initdeferred=%(initdeferred)s concurrent=%(concurrent)s]' % {
         'idxname': getchars(node['idxname']),
-        'relationOid': node['relationOid'],
         'accessMethod': getchars(node['accessMethod']),
         'tableSpace': node['tableSpace'],
         'idxcomment': node['idxcomment'],
         'indexOid': node['indexOid'],
-        'is_part_child': (int(node['is_part_child']) == 1),
         'oldNode': node['oldNode'],
         'unique': (int(node['unique']) == 1),
         'primary': (int(node['primary']) == 1),
@@ -1228,9 +1204,6 @@ def format_index_stmt(node, indent=0):
         'deferrable': (int(node['deferrable']) == 1),
         'initdeferred': (int(node['initdeferred']) == 1),
         'concurrent': (int(node['concurrent']) == 1),
-        'is_split_part': (int(node['is_split_part']) == 1),
-        'parentIndexId': node['parentIndexId'],
-        'parentConstraintId': node['parentConstraintId'],
         }
 
     retval += format_optional_node_field(node, 'relation')
@@ -1260,9 +1233,9 @@ def format_range_var(node, indent=0):
     if (str(node['schemaname']) != '0x0'):
         retval += 'schemaname=%(schemaname)s ' % { 'schemaname': getchars(node['schemaname']) }
 
-    retval += 'relname=%(relname)s inhOpt=%(inhOpt)s relpersistence=%(relpersistence)s alias=%(alias)s location=%(location)s]' % {
+    retval += 'relname=%(relname)s inh=%(inh)s relpersistence=%(relpersistence)s alias=%(alias)s location=%(location)s]' % {
         'relname': getchars(node['relname']),
-        'inhOpt': node['inhOpt'],
+        'inh': (int(node['inh']) == 1),
         'relpersistence': node['relpersistence'],
         'alias': node['alias'],
         'location': node['location'],
@@ -1344,15 +1317,6 @@ def format_constraint(node, indent=0):
 
     retval += ' skip_validation=%s' % (int(node['skip_validation']) == 1)
     retval += ' initially_valid=%s' % (int(node['initially_valid']) == 1)
-
-    if (node['trig1Oid'] != 0):
-        retval += ' trig1Oid=%s' % node['trig1Oid']
-    if (node['trig2Oid'] != 0):
-        retval += ' trig2Oid=%s' % node['trig1Oid']
-    if (node['trig3Oid'] != 0):
-        retval += ' trig3Oid=%s' % node['trig1Oid']
-    if (node['trig4Oid'] != 0):
-        retval += ' trig4Oid=%s' % node['trig1Oid']
 
     retval += ']'
 
@@ -1455,9 +1419,8 @@ def format_func_expr(node, indent=0):
     if node['inputcollid'] != 0:
         retval += ' inputcollid=%s' % node['inputcollid']
 
-    retval += ' location=%(location)s is_tablefunc=%(is_tablefunc)s]' % {
+    retval += ' location=%(location)s]' % {
         'location': node['location'],
-        'is_tablefunc': (int(node['is_tablefunc']) == 1),
     }
 
     retval += format_optional_node_list(node, 'args', skip_tag=True)
@@ -1705,18 +1668,21 @@ def format_aggref(node, indent=0):
     if node['inputcollid'] != 0:
         retval += ' inputcollid=%s' % node['inputcollid']
 
-    retval += ''' aggstar=%(aggstar)s aggvariadic=%(aggvariadic)s aggkind='%(aggkind)s' agglevelsup=%(agglevelsup)s aggstage=%(aggstage)s location=%(location)s)''' % {
+    retval += ''' aggtranstype=%(aggtranstype)s aggstar=%(aggstar)s aggvariadic=%(aggvariadic)s aggkind='%(aggkind)s' agglevelsup=%(agglevelsup)s aggsplit=%(aggsplit)s location=%(location)s)''' % {
+        'aggtranstype': node['aggtranstype'],
         'aggstar': (int(node['aggstar']) == 1),
         'aggvariadic': (int(node['aggvariadic']) == 1),
         'aggkind': format_char(node['aggkind']),
         'agglevelsup': node['agglevelsup'],
-        'aggstage': node['aggstage'],
+        'aggsplit': node['aggsplit'],
         'location': node['location'],
     }
 
     retval += format_optional_node_list(node, 'args', skip_tag=True)
+    retval += format_oid_list(node['aggargtypes'])
     retval += format_optional_node_list(node, 'aggdirectargs')
     retval += format_optional_node_list(node, 'aggorder')
+    retval += format_optional_node_list(node, 'aggdistinct')
     retval += format_optional_node_field(node, 'aggfilter')
     return add_indent(retval, indent)
 
