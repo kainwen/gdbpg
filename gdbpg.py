@@ -546,8 +546,12 @@ def format_char(value):
     return str_val.split(' ')[1][1:-1]
 
 
-def format_relids(relids):
-    return '(not implemented)'
+def format_bitmapset(bitmapset):
+    num_words = int(bitmapset['nwords'])
+    retval = '0x'
+    for word in reversed(range(num_words)):
+        retval += '%08x' % int(bitmapset['words'][word])
+    return retval
 
 
 def format_node_array(array, start_idx, length, indent=0):
@@ -666,15 +670,7 @@ def format_node(node, indent=0):
 
         node = cast(node, 'RelOptInfo')
 
-        retval = 'RelOptInfo (kind=%(kind)s relids=%(relids)s rtekind=%(rtekind)s relid=%(relid)s rows=%(rows)s width=%(width)s fk=%(fk)s)' % {
-            'kind': node['reloptkind'],
-            'rows': node['rows'],
-            'width': node['width'],
-            'relid': node['relid'],
-            'relids': format_relids(node['relids']),
-            'rtekind': node['rtekind'],
-            'fk': (int(node['has_fk_join']) == 1)
-        }
+        retval = format_reloptinfo(node)
 
     elif is_a(node, 'RangeTblEntry'):
 
@@ -980,6 +976,18 @@ def format_planned_stmt(plan, indent=0):
         'result_rels': format_int_list(plan['resultRelations']),
         'util_stmt': format_node(plan['utilityStmt']),
         'subplans': format_node_list(plan['subplans'], 1, True)
+    }
+
+    return add_indent(retval, indent)
+
+def format_reloptinfo(node, indent=0):
+    retval = 'RelOptInfo (kind=%(kind)s relids=%(relids)s rtekind=%(rtekind)s relid=%(relid)s rows=%(rows)s width=%(width)s)' % {
+        'kind': node['reloptkind'],
+        'rows': node['rows'],
+        'width': node['width'],
+        'relid': node['relid'],
+        'relids': format_bitmapset(node['relids']),
+        'rtekind': node['rtekind'],
     }
 
     return add_indent(retval, indent)
