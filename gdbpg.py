@@ -668,6 +668,12 @@ def format_node(node, indent=0):
 
         retval = format_op_expr(node)
 
+    elif is_a(node, 'NullIfExpr'):
+
+        node = cast(node, 'OpExpr')
+
+        retval = format_op_expr(node)
+
     elif is_a(node, 'DistinctExpr'):
 
         node = cast(node, 'OpExpr')
@@ -940,7 +946,10 @@ def format_op_expr(node, indent=0):
     if is_a(cast(node, 'Node'), 'DistinctExpr'):
         nodetag =  'DistinctExpr'
 
-    retval = """%(nodetag)s [opno=%(opno)s opfuncid=%(opfuncid)s opresulttype=%(opresulttype)
+    if is_a(cast(node, 'Node'), 'NullIfExpr'):
+        nodetag =  'NullIfExpr'
+
+    retval = """%(nodetag)s [opno=%(opno)s opfuncid=%(opfuncid)s opresulttype=%(opresulttype)s]
 %(clauses)s""" % {
         'nodetag': nodetag,
         'opno': node['opno'],
@@ -948,6 +957,8 @@ def format_op_expr(node, indent=0):
         'opresulttype': node['opresulttype'],
         'clauses': format_node_list(node['args'], 1, True)
     }
+
+    return add_indent(retval, indent)
 
 def format_func_expr(node, indent=0):
 
