@@ -168,6 +168,24 @@ def format_plan_tree(tree, indent=0):
 
         retval += add_indent(index, 2)
 
+    if is_a(tree, 'Agg'):
+        agg = cast(tree, 'Agg')
+        numcols = int(agg['numCols'])
+
+        if (numcols >= 1):
+            retval += '\n\tOperators:\n'
+
+            index = ''
+            for col in range(0,numcols):
+                index += '[grpColIdx=%(grpColIdx)s grpOperators=%(grpOperators)s]' % {
+                    'grpColIdx': agg['grpColIdx'][col],
+                    'grpOperators': agg['grpOperators'][col],
+                }
+                if col < numcols-1:
+                    index += '\n'
+
+            retval += add_indent(index, 2)
+
     if is_a(tree, 'SetOp'):
         setop = cast(tree, 'SetOp')
         numcols = int(setop['numCols'])
