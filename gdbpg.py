@@ -52,6 +52,22 @@ def format_plan_tree(tree, indent=0):
             'nsharer_xslice': sort['nsharer_xslice'],
         }
 
+    if is_a(tree, 'Agg'):
+        agg = cast(tree, 'Agg')
+        node_extra += '   <aggstrategy=%(aggstrategy)s numCols=%(numCols)s numGroups=%(numGroups)s transSpace=%(transSpace)s numNullCols=%(numNullCols)s inputGrouping=%(inputGrouping)s grouping=%(grouping)s inputHasGrouping=%(inputHasGrouping)s rollupGSTimes=%(rollupGSTimes)s lastAgg=%(lastAgg)s streaming=%(streaming)s>\n' % {
+            'aggstrategy': agg['aggstrategy'],
+            'numCols': agg['numCols'],
+            'numGroups': agg['numGroups'],
+            'transSpace': agg['transSpace'],
+            'numNullCols': agg['numNullCols'],
+            'inputGrouping': agg['inputGrouping'],
+            'grouping': agg['grouping'],
+            'inputHasGrouping': (int(agg['inputHasGrouping']) == 1),
+            'rollupGSTimes': agg['rollupGSTimes'],
+            'lastAgg': (int(agg['lastAgg']) == 1),
+            'streaming': (int(agg['streaming']) == 1),
+        }
+
     if is_a(tree, 'SetOp'):
         setop = cast(tree, 'SetOp')
         node_extra += '   <cmd=%(cmd)s numCols=%(numCols)s flagColIdx=%(flagColIdx)s>\n' % {
@@ -604,6 +620,9 @@ def format_char(value):
 
 
 def format_bitmapset(bitmapset):
+    if (str(bitmapset) == '0x0'):
+        return '0x0'
+
     num_words = int(bitmapset['nwords'])
     retval = '0x'
     for word in reversed(range(num_words)):
