@@ -137,6 +137,19 @@ def format_plan_tree(tree, indent=0):
                 'resconstantqual': format_node(resconstantqual, 2)
             }
 
+    if is_a(tree, 'Motion'):
+        motion = cast(tree, 'Motion')
+        if str(motion['hashExpr']) != '0x0':
+            retval += '\n\thashExprs:'
+            retval += '\n\t\thashDataTypes: '
+            retval+='%(hashDataTypes)s' % {
+                'hashDataTypes': format_oid_list(motion['hashDataTypes'])
+            }
+
+            retval+='\n%(hashExpr)s' % {
+                'hashExpr': format_node_list(motion['hashExpr'], 2, True)
+            }
+
 
     if is_a(tree, 'HashJoin') or is_a(tree, 'Join') or is_a(tree, 'NestLoop') or is_a(tree, 'MergeJoin'):
         join = cast(tree, 'Join')
