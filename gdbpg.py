@@ -870,11 +870,6 @@ def format_node(node, indent=0):
 
         retval = format_create_stmt(node)
 
-    elif is_a(node, 'IndexStmt'):
-        node = cast(node, 'IndexStmt')
-
-        retval = format_index_stmt(node)
-
     elif is_a(node, 'AlterTableStmt'):
         node = cast(node, 'AlterTableStmt')
 
@@ -1082,9 +1077,7 @@ def format_node(node, indent=0):
     elif is_a(node, 'Query'):
         node = cast(node, 'Query')
 
-        retval = format_query_info(node)
         node_formatter = NodeFormatter(node)
-        retval += '\n'
         retval += node_formatter.format()
 
     elif is_pathnode(node):
@@ -1099,8 +1092,12 @@ def format_node(node, indent=0):
 
 
     else:
+        try:
+            node_formatter = NodeFormatter(node)
+            retval += node_formatter.format()
         # default - just print the type name
-        retval = format_type(type_str)
+        except:
+            retval = format_type(type_str)
 
     return add_indent(str(retval), indent)
 
@@ -1778,6 +1775,7 @@ class NodeFormatter():
     # Basic node information
     __node = None
     __node_type = None
+    __type_str = None
 
     # String representations of individual fields in node
     __all_fields = None
@@ -1798,15 +1796,17 @@ class NodeFormatter():
         #       for a node 'signature'
         # TODO: this should be done in a class method
         self.__list_types = ["List *"]
-        self.__node_types = ["Node *", "Expr *", "FromExpr *", "OnConflictExpr *"]
+        self.__node_types = ["Node *", "Expr *", "FromExpr *", "OnConflictExpr *", "RangeVar *"]
 
         # TODO: Make the node lookup able to handle inherited types(like Plan nodes)
-        self.__node_type = str(node['type']).replace("T_", "")
-        self.__node = node
+        self.__type_str = str(node['type'])
+        self.__node = cast(node, self.type)
 
 
     @property
     def type(self):
+        if self.__node_type == None:
+            self.__node_type = format_type(self.__type_str)
         return self.__node_type
 
     @property
@@ -1829,7 +1829,6 @@ class NodeFormatter():
             t = gdb.lookup_type(self.type)
             for v in t.values():
                 for field in self.__list_types:
-                    print("list compare %s %s %s" % (v.name, v.type, field))
                     if self.is_type(v, field):
                         self.__list_fields.append(v.name)
 
@@ -1865,7 +1864,7 @@ class NodeFormatter():
         # return (gdb.types.get_basic_type(value.type) == gdb.types.get_basic_type(t))
 
     def format(self):
-        retval = ("%s %s" % (self.type, self.format_regular_fields()))
+        retval = self.format_regular_fields()
         for field in self.fields:
             if field in self.node_fields:
                 retval += format_optional_node_field(self.__node, field)
@@ -1876,12 +1875,18 @@ class NodeFormatter():
 
     def format_regular_fields(self):
         retval = self.type
-        retval = " ["
+        retval += " ["
         fieldcount = 1
         for field in self.regular_fields:
+            # TODO: there are always going to be special cases- how should I handle them?
+            if self.is_type(self.__node[field], "char *"):
+                value = getchars(self.__node[field])
+            else:
+                value = self.__node[field]
+
             retval += "%(field)s=%(value)s" % {
                 'field': field,
-                'value': self.__node[field]
+                'value': value
             }
             if fieldcount < len(self.regular_fields):
                 retval += ' '
