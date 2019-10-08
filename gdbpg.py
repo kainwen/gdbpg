@@ -1023,11 +1023,6 @@ def format_node(node, indent=0):
 
         retval = format_partition_spec(node)
 
-    elif is_a(node, 'Constraint'):
-        node = cast(node, 'Constraint')
-
-        retval = format_constraint(node)
-
     elif is_a(node, 'DefElem'):
         node = cast(node, 'DefElem')
 
@@ -1090,6 +1085,9 @@ def format_node(node, indent=0):
 
         retval = format_plan_tree(node)
 
+    # TODO: NodeFormatter exceptions in these nodes
+    elif is_a(node, "ColumnRef"):
+        retval = format_type(type_str)
 
     else:
         try:
@@ -1097,6 +1095,7 @@ def format_node(node, indent=0):
             retval += node_formatter.format()
         # default - just print the type name
         except:
+            print("Exception in node type: %s" % type_str)
             retval = format_type(type_str)
 
     return add_indent(str(retval), indent)
@@ -1796,11 +1795,12 @@ class NodeFormatter():
         #       for a node 'signature'
         # TODO: this should be done in a class method
         self.__list_types = ["List *"]
-        self.__node_types = ["Node *", "Expr *", "FromExpr *", "OnConflictExpr *", "RangeVar *"]
+        self.__node_types = ["Node *", "Expr *", "FromExpr *", "OnConflictExpr *", "RangeVar *", "TypeName *"]
 
         # TODO: Make the node lookup able to handle inherited types(like Plan nodes)
         self.__type_str = str(node['type'])
         self.__node = cast(node, self.type)
+        print("new formatter: %s" % self.type)
 
 
     @property
