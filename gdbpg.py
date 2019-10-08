@@ -281,29 +281,24 @@ def format_query_info(node, indent=0):
         'canSetTag': (int(node['canSetTag']) == 1),
         'resultRelation': node['resultRelation'],
     }
-    for field in get_node_fields(node):
-        retval += format_optional_node_field(node, field)
 
-    for field in get_list_fields(node):
-        retval += format_optional_node_field(node, field)
-
-    #retval += format_optional_node_field(node, 'utilityStmt')
-    #retval += format_optional_node_list(node, 'cteList')
-    #retval += format_optional_node_list(node, 'rtable')
-    #retval += format_optional_node_field(node, 'jointree')
-    #retval += format_optional_node_list(node, 'targetList')
-    #retval += format_optional_node_list(node, 'withCheckOptions')
-    #retval += format_optional_node_list(node, 'returningList')
-    #retval += format_optional_node_list(node, 'groupClause')
-    #retval += format_optional_node_field(node, 'havingQual')
-    #retval += format_optional_node_list(node, 'windowClause')
-    #retval += format_optional_node_list(node, 'distinctClause')
-    #retval += format_optional_node_list(node, 'sortClause')
-    #retval += format_optional_node_field(node, 'limitOffset')
-    #retval += format_optional_node_field(node, 'limitCount')
-    #retval += format_optional_node_list(node, 'rowMarks')
-    #retval += format_optional_node_field(node, 'setOperations')
-    #retval += format_optional_node_list(node, 'constraintDeps')
+    retval += format_optional_node_field(node, 'utilityStmt')
+    retval += format_optional_node_list(node, 'cteList')
+    retval += format_optional_node_list(node, 'rtable')
+    retval += format_optional_node_field(node, 'jointree')
+    retval += format_optional_node_list(node, 'targetList')
+    retval += format_optional_node_list(node, 'withCheckOptions')
+    retval += format_optional_node_list(node, 'returningList')
+    retval += format_optional_node_list(node, 'groupClause')
+    retval += format_optional_node_field(node, 'havingQual')
+    retval += format_optional_node_list(node, 'windowClause')
+    retval += format_optional_node_list(node, 'distinctClause')
+    retval += format_optional_node_list(node, 'sortClause')
+    retval += format_optional_node_field(node, 'limitOffset')
+    retval += format_optional_node_field(node, 'limitCount')
+    retval += format_optional_node_list(node, 'rowMarks')
+    retval += format_optional_node_field(node, 'setOperations')
+    retval += format_optional_node_list(node, 'constraintDeps')
 
     return add_indent(retval, 0)
 
@@ -1086,6 +1081,8 @@ def format_node(node, indent=0):
         node = cast(node, 'Query')
 
         retval = format_query_info(node)
+        node_formatter = NodeFormatter(node)
+        retval += node_formatter.format()
 
     elif is_pathnode(node):
         node = cast(node, 'Path')
@@ -1760,7 +1757,6 @@ def get_node_fields(node):
             if is_type(v, field):
                 fields.append(v.name)
 
-    print(fields)
     return fields
 
 def get_list_fields(node):
@@ -1773,8 +1769,96 @@ def get_list_fields(node):
         for field in listfields:
             if is_type(v, field):
                 fields.append(v.name)
-    print(fields)
     return fields
+
+class NodeFormatter():
+    # Basic node information
+    __node = None
+    __node_type = None
+
+    # String representations of individual fields in node
+    __all_fields = None
+    __regular_fields = None
+    __node_fields = None
+    __list_fields = None
+
+    # String representation of the types to match to generate the above lists
+    __list_types = None
+    __node_types = None
+    def __init__(self, node):
+        # TODO: get types from yaml config
+        # TODO: this should be done in a class method
+        self.__list_types = ["List *"]
+        self.__node_types = ["Node *", "Expr *"]
+
+        # TODO: Make the node lookup able to handle inherited types(like Plan nodes)
+        self.__node_type = str(node['type']).replace("T_", "")
+        self.__node = node
+
+
+    @property
+    def type(self):
+        return self.__node_type
+
+    @property
+    def fields(self):
+        if self.__all_fields == None:
+            self.__all_fields = []
+            t = gdb.lookup_type(self.type)
+            for field in t.values():
+                self.__all_fields.append(field.name)
+
+        return self.__all_fields
+
+    @property
+    def list_fields(self):
+        if self.__list_fields == None:
+            self.__list_fields = []
+
+            t = gdb.lookup_type(self.type)
+            for v in t.values():
+                for field in self.__list_types:
+                    if self.is_type(v, field):
+                        self.__list_fields.append(v.name)
+
+        return self.__list_fields
+
+    @property
+    def node_fields(self):
+        if self.__node_fields == None:
+            self.__node_fields = []
+
+            t = gdb.lookup_type(self.type)
+            for v in t.values():
+                for field in self.__node_types:
+                    if self.is_type(v, field):
+                        self.__node_fields.append(v.name)
+
+        return self.__node_fields
+
+    @property
+    def regular_fields(self):
+        if self.__regular_fields == None:
+            self.__regular_fields = []
+
+            self.__regular_fields = [field for field in self.fields if field not in self.list_fields + self.node_fields]
+
+        return self.__regular_fields
+
+    # TODO: should this be a class method?
+    def is_type(self, value, type_name):
+        t = gdb.lookup_type(type_name)
+        return (str(value.type) == str(t))
+        # This doesn't work for list types for some reason...
+        # return (gdb.types.get_basic_type(value.type) == gdb.types.get_basic_type(t))
+
+    def format(self):
+        retval = ("%s %s" % (self.type, self.regular_fields))
+        for field in self.node_fields:
+            retval += format_optional_node_field(self.__node, field)
+        for field in self.list_fields:
+            retval += format_optional_node_field(self.__node, field)
+        return retval
 
 class PgPrintCommand(gdb.Command):
     "print PostgreSQL structures"
