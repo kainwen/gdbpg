@@ -1,6 +1,7 @@
 import gdb
 import string
 
+# TODO: Put these fields in a config file
 PlanNodes = ['Result', 'Repeat', 'ModifyTable','Append', 'Sequence', 'Motion', 
         'AOCSScan', 'BitmapAnd', 'BitmapOr', 'Scan', 'SeqScan', 'TableScan',
         'IndexScan', 'DynamicIndexScan', 'BitmapIndexScan',
@@ -12,6 +13,7 @@ PlanNodes = ['Result', 'Repeat', 'ModifyTable','Append', 'Sequence', 'Motion',
                 'Limit', 'DML', 'SplitUpdate', 'AssertOp', 'RowTrigger',
                 'PartitionSelector' ]
 
+# TODO: Put these fields in a config file
 PathNodes = ['Path', 'AppendOnlyPath', 'AOCSPath', 'ExternalPath', 'PartitionSelectorPath',
              'IndexPath', 'BitmapHeapPath', 'BitmapAndPath', 'BitmapOrPath', 'TidPath',
              'CdbMotionPath', 'ForeignPath', 'AppendPath', 'MergeAppendPath', 'ResultPath',
@@ -1082,6 +1084,7 @@ def format_node(node, indent=0):
 
         retval = format_query_info(node)
         node_formatter = NodeFormatter(node)
+        retval += '\n'
         retval += node_formatter.format()
 
     elif is_pathnode(node):
@@ -1782,14 +1785,20 @@ class NodeFormatter():
     __node_fields = None
     __list_fields = None
 
+    # Handle extra fields differently than other types
+    # TODO: - remove extra fields from __regular_feilds
+    #       - set a special method to format these fields in a config file
+    __extra_fields = None
+
     # String representation of the types to match to generate the above lists
     __list_types = None
     __node_types = None
     def __init__(self, node):
-        # TODO: get types from yaml config
+        # TODO: get node and list types from yaml config OR check each field
+        #       for a node 'signature'
         # TODO: this should be done in a class method
         self.__list_types = ["List *"]
-        self.__node_types = ["Node *", "Expr *"]
+        self.__node_types = ["Node *", "Expr *", "FromExpr *", "OnConflictExpr *"]
 
         # TODO: Make the node lookup able to handle inherited types(like Plan nodes)
         self.__node_type = str(node['type']).replace("T_", "")
@@ -1806,7 +1815,9 @@ class NodeFormatter():
             self.__all_fields = []
             t = gdb.lookup_type(self.type)
             for field in t.values():
-                self.__all_fields.append(field.name)
+                # Skip the node['type'] fields
+                if field.name != "type":
+                    self.__all_fields.append(field.name)
 
         return self.__all_fields
 
@@ -1818,6 +1829,7 @@ class NodeFormatter():
             t = gdb.lookup_type(self.type)
             for v in t.values():
                 for field in self.__list_types:
+                    print("list compare %s %s %s" % (v.name, v.type, field))
                     if self.is_type(v, field):
                         self.__list_fields.append(v.name)
 
@@ -1853,11 +1865,29 @@ class NodeFormatter():
         # return (gdb.types.get_basic_type(value.type) == gdb.types.get_basic_type(t))
 
     def format(self):
-        retval = ("%s %s" % (self.type, self.regular_fields))
-        for field in self.node_fields:
-            retval += format_optional_node_field(self.__node, field)
-        for field in self.list_fields:
-            retval += format_optional_node_field(self.__node, field)
+        retval = ("%s %s" % (self.type, self.format_regular_fields()))
+        for field in self.fields:
+            if field in self.node_fields:
+                retval += format_optional_node_field(self.__node, field)
+            elif field in self.list_fields:
+                retval += format_optional_node_list(self.__node, field)
+
+        return retval
+
+    def format_regular_fields(self):
+        retval = self.type
+        retval = " ["
+        fieldcount = 1
+        for field in self.regular_fields:
+            retval += "%(field)s=%(value)s" % {
+                'field': field,
+                'value': self.__node[field]
+            }
+            if fieldcount < len(self.regular_fields):
+                retval += ' '
+            fieldcount +=1
+        retval += ']'
+
         return retval
 
 class PgPrintCommand(gdb.Command):
