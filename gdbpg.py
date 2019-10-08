@@ -284,23 +284,26 @@ def format_query_info(node, indent=0):
     for field in get_node_fields(node):
         retval += format_optional_node_field(node, field)
 
+    for field in get_list_fields(node):
+        retval += format_optional_node_field(node, field)
+
     #retval += format_optional_node_field(node, 'utilityStmt')
-    retval += format_optional_node_list(node, 'cteList')
-    retval += format_optional_node_list(node, 'rtable')
+    #retval += format_optional_node_list(node, 'cteList')
+    #retval += format_optional_node_list(node, 'rtable')
     #retval += format_optional_node_field(node, 'jointree')
-    retval += format_optional_node_list(node, 'targetList')
-    retval += format_optional_node_list(node, 'withCheckOptions')
-    retval += format_optional_node_list(node, 'returningList')
-    retval += format_optional_node_list(node, 'groupClause')
+    #retval += format_optional_node_list(node, 'targetList')
+    #retval += format_optional_node_list(node, 'withCheckOptions')
+    #retval += format_optional_node_list(node, 'returningList')
+    #retval += format_optional_node_list(node, 'groupClause')
     #retval += format_optional_node_field(node, 'havingQual')
-    retval += format_optional_node_list(node, 'windowClause')
-    retval += format_optional_node_list(node, 'distinctClause')
-    retval += format_optional_node_list(node, 'sortClause')
+    #retval += format_optional_node_list(node, 'windowClause')
+    #retval += format_optional_node_list(node, 'distinctClause')
+    #retval += format_optional_node_list(node, 'sortClause')
     #retval += format_optional_node_field(node, 'limitOffset')
     #retval += format_optional_node_field(node, 'limitCount')
-    retval += format_optional_node_list(node, 'rowMarks')
+    #retval += format_optional_node_list(node, 'rowMarks')
     #retval += format_optional_node_field(node, 'setOperations')
-    retval += format_optional_node_list(node, 'constraintDeps')
+    #retval += format_optional_node_list(node, 'constraintDeps')
 
     return add_indent(retval, 0)
 
@@ -1706,8 +1709,10 @@ def is_node(l):
         return False
 
 def is_type(value, type_name):
-    t = gdb.lookup_type(type_name).pointer()
-    return (gdb.types.get_basic_type(value.type) == gdb.types.get_basic_type(t))
+    t = gdb.lookup_type(type_name)
+    return (str(value.type) == str(t))
+    # This doesn't work for list types for some reason...
+    # return (gdb.types.get_basic_type(value.type) == gdb.types.get_basic_type(t))
 
 def cast(node, type_name):
     '''wrap the gdb cast to proper node type'''
@@ -1745,16 +1750,29 @@ def getchars(arg):
     return retval
 
 def get_node_fields(node):
-    nodefields = ["Node", "Expr"]
+    nodefields = ["Node *", "Expr *"]
     type_name = str(node['type']).replace("T_", "")
 
     t = gdb.lookup_type(type_name)
     fields = []
     for v in t.values():
-        for t in nodefields:
-            if is_type(v, t):
+        for field in nodefields:
+            if is_type(v, field):
                 fields.append(v.name)
 
+    print(fields)
+    return fields
+
+def get_list_fields(node):
+    listfields = ["List *"]
+    type_name = str(node['type']).replace("T_", "")
+
+    t = gdb.lookup_type(type_name)
+    fields = []
+    for v in t.values():
+        for field in listfields:
+            if is_type(v, field):
+                fields.append(v.name)
     print(fields)
     return fields
 
