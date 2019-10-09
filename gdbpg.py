@@ -1799,7 +1799,6 @@ class NodeFormatter():
         # TODO: Make the node lookup able to handle inherited types(like Plan nodes)
         self.__type_str = str(node['type'])
         self.__node = cast(node, self.type)
-        print("new formatter: %s" % self.type)
 
 
     @property
@@ -1873,9 +1872,15 @@ class NodeFormatter():
         return retval
 
     def format_regular_fields(self):
+        # TODO: get this value from config file
+        max_regular_field_chars = 165
         retval = self.type
         retval += " ["
+
+        newline_padding_chars = len(retval)
+
         fieldcount = 1
+        retline = ""
         for field in self.regular_fields:
             # TODO: there are always going to be special cases- how should I handle them?
             if self.is_type(self.__node[field], "char *"):
@@ -1883,12 +1888,19 @@ class NodeFormatter():
             else:
                 value = self.__node[field]
 
-            retval += "%(field)s=%(value)s" % {
+            retline += "%(field)s=%(value)s" % {
                 'field': field,
                 'value': value
             }
             if fieldcount < len(self.regular_fields):
-                retval += ' '
+                # TODO: track current indentation level
+                if len(retline) > max_regular_field_chars:
+                    retval += retline + '\n' + (' ' * newline_padding_chars)
+                    retline = ''
+                else:
+                    retline += ' '
+            else:
+                retval += retline
             fieldcount +=1
         retval += ']'
 
