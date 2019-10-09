@@ -279,35 +279,6 @@ def format_restrict_info(node, indent=0):
 
     return add_indent(retval, indent)
 
-def format_query_info(node, indent=0):
-    retval = 'Query [commandType=%(commandType)s querySource=%(querySource)s queryId=%(queryId)s canSetTag=%(canSetTag)s resultRelation=%(resultRelation)s]' % {
-        'commandType': node['commandType'],
-        'querySource': node['querySource'],
-        'queryId': node['queryId'],
-        'canSetTag': (int(node['canSetTag']) == 1),
-        'resultRelation': node['resultRelation'],
-    }
-
-    retval += format_optional_node_field(node, 'utilityStmt')
-    retval += format_optional_node_list(node, 'cteList')
-    retval += format_optional_node_list(node, 'rtable')
-    retval += format_optional_node_field(node, 'jointree')
-    retval += format_optional_node_list(node, 'targetList')
-    retval += format_optional_node_list(node, 'withCheckOptions')
-    retval += format_optional_node_list(node, 'returningList')
-    retval += format_optional_node_list(node, 'groupClause')
-    retval += format_optional_node_field(node, 'havingQual')
-    retval += format_optional_node_list(node, 'windowClause')
-    retval += format_optional_node_list(node, 'distinctClause')
-    retval += format_optional_node_list(node, 'sortClause')
-    retval += format_optional_node_field(node, 'limitOffset')
-    retval += format_optional_node_field(node, 'limitCount')
-    retval += format_optional_node_list(node, 'rowMarks')
-    retval += format_optional_node_field(node, 'setOperations')
-    retval += format_optional_node_list(node, 'constraintDeps')
-
-    return add_indent(retval, 0)
-
 def format_appendplan_list(lst, indent):
     retval = format_node_list(lst, indent, True)
     return add_indent(retval, indent + 1)
@@ -1062,6 +1033,11 @@ def format_node(node, indent=0):
 
         retval = format_cdb_process(node)
 
+   # elif is_a(node, 'Constraint'):
+   #     node = cast(node, 'Constraint')
+
+   #     retval = format_constraint(node)
+
     elif is_a(node, 'OidList'):
         retval = 'OidList: %s' % format_oid_list(node)
 
@@ -1089,13 +1065,8 @@ def format_node(node, indent=0):
         retval = format_type(type_str)
 
     else:
-        try:
-            node_formatter = NodeFormatter(node)
-            retval += node_formatter.format()
-        # default - just print the type name
-        except:
-            print("Exception in node type: %s" % type_str)
-            retval = format_type(type_str)
+        node_formatter = NodeFormatter(node)
+        retval += node_formatter.format()
 
     return add_indent(str(retval), indent)
 
@@ -1189,30 +1160,6 @@ def format_create_stmt(node, indent=0):
 
     return add_indent(retval, indent)
 
-def format_index_stmt(node, indent=0):
-    retval = 'IndexStmt [idxname=%(idxname)s accessMethod=%(accessMethod)s tableSpace=%(tableSpace)s idxcomment=%(idxcomment)s indexOid=%(indexOid)s oldNode=%(oldNode)s unique=%(unique)s primary=%(primary)s isconstraint=%(isconstraint)s deferrable=%(deferrable)s initdeferred=%(initdeferred)s concurrent=%(concurrent)s]' % {
-        'idxname': getchars(node['idxname']),
-        'accessMethod': getchars(node['accessMethod']),
-        'tableSpace': node['tableSpace'],
-        'idxcomment': node['idxcomment'],
-        'indexOid': node['indexOid'],
-        'oldNode': node['oldNode'],
-        'unique': (int(node['unique']) == 1),
-        'primary': (int(node['primary']) == 1),
-        'isconstraint': (int(node['isconstraint']) == 1),
-        'deferrable': (int(node['deferrable']) == 1),
-        'initdeferred': (int(node['initdeferred']) == 1),
-        'concurrent': (int(node['concurrent']) == 1),
-        }
-
-    retval += format_optional_node_field(node, 'relation')
-    retval += format_optional_node_list(node, 'indexParams')
-    retval += format_optional_node_list(node, 'options', newLine=False)
-    retval += format_optional_node_field(node, 'whereClause')
-    retval += format_optional_node_list(node, 'excludeOpNames')
-
-    return add_indent(retval, indent)
-
 def format_alter_table_stmt(node, indent=0):
     retval = 'AlterTableStmt [relkind=%(relkind)s missing_ok=%(missing_ok)s]' % {
         'relkind': node['relkind'],
@@ -1272,6 +1219,36 @@ def format_partition_spec(node, indent=0):
 
     return add_indent(retval, indent)
 
+def format_foreign_key_matchtype(node, field):
+    foreign_key_matchtypes = {
+        'f': 'FKCONSTR_MATCH_FULL',
+        'p': 'FKCONSTR_MATCH_PARTIAL',
+        's': 'FKCONSTR_MATCH_SIMPLE',
+    }
+
+    fk_char = format_char(node[field])
+
+    if (foreign_key_matchtypes.get(fk_char) != None):
+        return "%s=%s"  % (field, foreign_key_matchtypes.get(fk_char))
+
+    return None
+
+def format_foreign_key_actions(node, field):
+    foreign_key_actions = {
+        'a': 'FKONSTR_ACTION_NOACTION',
+        'r': 'FKCONSTR_ACTION_RESTRICT',
+        'c': 'FKCONSTR_ACTION_CASCADE',
+        'n': 'FKONSTR_ACTION_SETNULL',
+        'd': 'FKONSTR_ACTION_SETDEFAULT',
+    }
+
+    fk_char = format_char(node[field])
+
+    if (foreign_key_actions.get(fk_char) != None):
+        return "%s=%s" %(field, foreign_key_actions.get(fk_char))
+
+    return None
+
 def format_constraint(node, indent=0):
     retval = 'Constraint [contype=%(contype)s conname=%(conname)s deferrable=%(deferrable)s initdeferred=%(initdeferred)s location=%(location)s is_no_inherit=%(is_no_inherit)s' % {
         'contype': node['contype'],
@@ -1288,28 +1265,17 @@ def format_constraint(node, indent=0):
         retval += ' indexspace=%s' % node['indexspace']
         retval += ' access_method=%s' % node['access_method']
 
-    foreign_key_matchtypes = {
-        'f': 'FKCONSTR_MATCH_FULL',
-        'p': 'FKCONSTR_MATCH_PARTIAL',
-        's': 'FKCONSTR_MATCH_SIMPLE',
-    }
+    fk_matchtype = format_foreign_key_matchtype(node, 'fk_matchtype')
+    if (fk_matchtype != None):
+        retval += ' %s' % fk_matchtype
 
-    if (foreign_key_matchtypes.get(node['fk_matchtype']) != None):
-        retval += ' fk_matchtype=%s' % foreign_key_matchtypes.get(node['fk_matchtype'])
+    fk_upd_action = format_foreign_key_actions(node, 'fk_upd_action')
+    if (fk_upd_action != None):
+        retval += ' %s' % fk_upd_action
 
-    foreign_key_actions = {
-        'a': 'FKONSTR_ACTION_NOACTION',
-        'r': 'FKCONSTR_ACTION_RESTRICT',
-        'c': 'FKCONSTR_ACTION_CASCADE',
-        'n': 'FKONSTR_ACTION_SETNULL',
-        'd': 'FKONSTR_ACTION_SETDEFAULT',
-    }
-
-    if (foreign_key_actions.get(node['fk_upd_action']) != None):
-        retval += ' fk_upd_action=%s' % foreign_key_actions.get(node['fk_upd_action'])
-
-    if (foreign_key_actions.get(node['fk_upd_action']) != None):
-        retval += ' fk_del_action=%s' % foreign_key_actions.get(node['fk_upd_action'])
+    fk_del_action = format_foreign_key_actions(node, 'fk_del_action')
+    if (fk_del_action != None):
+        retval += ' %s' % fk_del_action
 
     if (node['old_pktable_oid'] != 0):
         retval += ' old_pktable_oid=%s' % node['old_pktable_oid']
@@ -1769,7 +1735,21 @@ def get_list_fields(node):
                 fields.append(v.name)
     return fields
 
-class NodeFormatter():
+# Visibility options
+NOT_NULL = "not_null"
+NEVER_SHOW = "never_show"
+
+# TODO: generate these overrides in a yaml config file
+REGULAR_FIELD_OVERRIDES = {
+    'Constraint': {
+        'fk_matchtype': {
+            'visibility_override': NOT_NULL,
+            'formatter_override': 'format_foreign_key_matchtype'
+        }
+    }
+}
+
+class NodeFormatter(object):
     # Basic node information
     __node = None
     __node_type = None
@@ -1784,7 +1764,7 @@ class NodeFormatter():
     # Handle extra fields differently than other types
     # TODO: - remove extra fields from __regular_feilds
     #       - set a special method to format these fields in a config file
-    __extra_fields = None
+    __regular_overrides = None
 
     # String representation of the types to match to generate the above lists
     __list_types = None
@@ -1799,6 +1779,8 @@ class NodeFormatter():
         # TODO: Make the node lookup able to handle inherited types(like Plan nodes)
         self.__type_str = str(node['type'])
         self.__node = cast(node, self.type)
+        self.___regular_overrides = REGULAR_FIELD_OVERRIDES.get(self.type)
+        print("regular field overrides: %s" % self.__regular_overrides)
 
 
     @property
