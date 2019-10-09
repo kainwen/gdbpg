@@ -1032,11 +1032,6 @@ def format_node(node, indent=0):
 
         retval = format_def_elem(node)
 
-    elif is_a(node, 'TypeName'):
-        node = cast(node, 'TypeName')
-
-        retval = format_type_name(node)
-
     elif is_a(node, 'Param'):
         node = cast(node, 'Param')
 
