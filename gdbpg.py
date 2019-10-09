@@ -249,8 +249,12 @@ def format_optional_node_list(node, fieldname, cast_to=None, skip_tag=False, new
             retval += add_indent('[%s]' % fieldname, indent, True)
             indent_add = 1
 
-        retval += '\n'
-        retval += '%s' % format_node_list(node[fieldname], indent + indent_add, newLine)
+        if newLine == True:
+            retval += '\n'
+            retval += '%s' % format_node_list(node[fieldname], indent + indent_add, newLine)
+        else:
+            retval += ' %s' % format_node_list(node[fieldname], 0, newLine)
+
     return retval
 
 def format_optional_node_field(node, fieldname, cast_to=None, skip_tag=False, indent=1):
