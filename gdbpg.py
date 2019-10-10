@@ -238,7 +238,7 @@ def format_plan_tree(tree, indent=0):
 
 
 
-def format_optional_node_list(node, fieldname, cast_to=None, skip_tag=False, newLine=True, indent=1):
+def format_optional_node_list(node, fieldname, cast_to=None, skip_tag=False, newLine=True, print_null=False, indent=1):
     if cast_to != None:
         node = cast(node, cast_to)
 
@@ -254,10 +254,12 @@ def format_optional_node_list(node, fieldname, cast_to=None, skip_tag=False, new
             retval += '%s' % format_node_list(node[fieldname], indent + indent_add, newLine)
         else:
             retval += ' %s' % format_node_list(node[fieldname], 0, newLine)
+    elif print_null == True:
+        return add_indent("[%s] (NIL)" % fieldname, indent, True)
 
     return retval
 
-def format_optional_node_field(node, fieldname, cast_to=None, skip_tag=False, indent=1):
+def format_optional_node_field(node, fieldname, cast_to=None, skip_tag=False, print_null=False, indent=1):
     if cast_to != None:
         node = cast(node, cast_to)
 
@@ -266,6 +268,9 @@ def format_optional_node_field(node, fieldname, cast_to=None, skip_tag=False, in
             return add_indent('%s' % format_node(node[fieldname]), indent, True)
         else:
             return add_indent('[%s] %s' % (fieldname, format_node(node[fieldname])), indent, True)
+    elif print_null == True:
+        return add_indent("[%s] (NULL)" % fieldname, indent, True)
+
     return ''
 
 def format_restrict_info(node, indent=0):
@@ -1717,6 +1722,7 @@ DEFAULT_DISPLAY_METHODS = {
     'datatype_methods': {
             'char *': 'format_string_pointer_field',
     },
+    'show_hidden': False,
 }
 
 def format_regular_field(node, field):
@@ -1776,6 +1782,8 @@ class NodeFormatter(object):
         # Get methods for display
         self.__default_display_methods = DEFAULT_DISPLAY_METHODS
         self.__default_regular_visibility = ALWAYS_SHOW
+        self.__default_list_visibility = NOT_NULL
+        self.__default_node_visibility = NOT_NULL
         self.__formatter_overrides = FORMATTER_OVERRIDES.get(self.type)
 
     def get_datatype_override(self, field):
@@ -1812,12 +1820,24 @@ class NodeFormatter(object):
 
         return globals()[self.__default_display_methods['fields']]
 
-    def get_regular_display_mode(self, field):
+    def get_display_mode(self, field):
+        # If the global 'show_hidden' is set, then this command shal always
+        # return ALWAYS_SHOW
+        if self.__default_display_methods['show_hidden'] == True:
+            return ALWAYS_SHOW
+
         override_string = self.get_field_override(field, 'visibility')
         if override_string != None:
             return override_string
 
-        return self.__default_regular_visibility
+        if field in self.__regular_fields:
+            return self.__default_regular_visibility
+        if field in self.__list_fields:
+            return self.__default_list_visibility
+        if field in self.__node_fields:
+            return self.__default_node_visibility
+
+        return ALWAYS_SHOW
 
 
     @property
@@ -1886,10 +1906,17 @@ class NodeFormatter(object):
     def format(self):
         retval = self.format_regular_fields()
         for field in self.fields:
+            display_mode = self.get_display_mode(field)
+            print_null = False
+            if display_mode == NEVER_SHOW:
+                continue
+            elif display_mode == ALWAYS_SHOW:
+                print_null = True
+
             if field in self.node_fields:
-                retval += format_optional_node_field(self.__node, field)
+                retval += format_optional_node_field(self.__node, field, print_null=print_null)
             elif field in self.list_fields:
-                retval += format_optional_node_list(self.__node, field)
+                retval += format_optional_node_list(self.__node, field, print_null=print_null)
 
         return retval
 
@@ -1905,7 +1932,7 @@ class NodeFormatter(object):
         retline = ""
         for field in self.regular_fields:
             fieldcount +=1
-            display_mode = self.get_regular_display_mode(field)
+            display_mode = self.get_display_mode(field)
             if display_mode == NEVER_SHOW:
                 continue
 
