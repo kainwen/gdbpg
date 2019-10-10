@@ -855,11 +855,6 @@ def format_node(node, indent=0):
 
         retval = format_alter_table_stmt(node)
 
-    elif is_a(node, 'RangeVar'):
-        node = cast(node, 'RangeVar')
-
-        retval = format_range_var(node)
-
     elif is_a(node, 'List'):
         node = cast(node, 'List')
 
@@ -1166,25 +1161,6 @@ def format_alter_table_stmt(node, indent=0):
     }
     retval += format_optional_node_field(node, 'relation')
     retval += format_optional_node_list(node, 'cmds')
-
-    return add_indent(retval, indent)
-
-def format_range_var(node, indent=0):
-    retval = 'RangeVar ['
-
-    if (str(node['catalogname']) != '0x0'):
-        retval += 'catalogname=%(catalogname)s ' % { 'catalogname': getchars(node['catalogname']) }
-
-    if (str(node['schemaname']) != '0x0'):
-        retval += 'schemaname=%(schemaname)s ' % { 'schemaname': getchars(node['schemaname']) }
-
-    retval += 'relname=%(relname)s inh=%(inh)s relpersistence=%(relpersistence)s alias=%(alias)s location=%(location)s]' % {
-        'relname': getchars(node['relname']),
-        'inh': (int(node['inh']) == 1),
-        'relpersistence': node['relpersistence'],
-        'alias': node['alias'],
-        'location': node['location'],
-    }
 
     return add_indent(retval, indent)
 
@@ -1705,16 +1681,18 @@ FORMATTER_OVERRIDES = {
                 'visibility': "not_null",
                 'formatter': 'format_foreign_key_actions',
             },
-            'old_pktable_oid': {
-                'visibility': "not_null",
-            },
-            'location': {
-                'visibility': "never_show",
-            },
+            'old_pktable_oid': {'visibility': "not_null"},
+            'location': {'visibility': "never_show"},
         },
         'datatype_methods': {
          }
-    }
+    },
+    'RangeVar': {
+        'fields': {
+            'catalogname': {'visibility': "not_null"},
+            'schemaname': {'visibility': "not_null"},
+        }
+    },
 }
 
 DEFAULT_DISPLAY_METHODS = {
@@ -1956,7 +1934,7 @@ class NodeFormatter(object):
                 if len(retline) > max_regular_field_chars:
                     retval += retline + '\n' + (' ' * newline_padding_chars)
                     retline = ''
-                else:
+                elif len(retline) > 0:
                     retline += ' '
 
             retline += "%(field)s=%(value)s" % {
