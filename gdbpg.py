@@ -548,24 +548,6 @@ def format_def_elem(node, indent=0):
 
     return add_indent(retval, indent)
 
-def format_type_name(node, indent=0):
-    if (str(node) == '0x0'):
-        return '(NIL)'
-
-    retval = 'TypeName [typeOid=%(typeOid)s setof=%(setof)s pct_type=%(pct_type)s typemod=%(typemod)s location=%(location)s]' % {
-        'typeOid': node['typeOid'],
-        'setof': (int(node['setof']) == 1),
-        'pct_type': (int(node['pct_type']) == 1),
-        'typemod': node['typemod'],
-        'location': node['location'],
-    }
-
-    retval += format_optional_node_field(node, 'names')
-    retval += format_optional_node_field(node, 'typmods')
-    retval += format_optional_node_field(node, 'arrayBounds')
-
-    return add_indent(retval, indent)
-
 def format_param(node, indent=0):
     if (str(node) == '0x0'):
         return '(NIL)'
@@ -844,11 +826,6 @@ def format_node(node, indent=0):
         node = cast(node, 'PlannedStmt')
 
         retval = format_planned_stmt(node)
-
-    elif is_a(node, 'CreateStmt'):
-        node = cast(node, 'CreateStmt')
-
-        retval = format_create_stmt(node)
 
     elif is_a(node, 'AlterTableStmt'):
         node = cast(node, 'AlterTableStmt')
@@ -1198,6 +1175,7 @@ def format_generated_when(node, field):
     generated_when = {
         'a': 'ATTRIBUTE_IDENTITY_ALWAYS',
         'd': 'ATTRIBUTE_IDENTITY_BY_DEFAULT',
+        's': 'ATTRIBUTE_GENERATED_STORED',
     }
 
     fk_char = format_char(node[field])
@@ -1680,6 +1658,20 @@ ALWAYS_SHOW = "always_show"
 
 # TODO: generate these overrides in a yaml config file
 FORMATTER_OVERRIDES = {
+    'ColumnDef': {
+        'fields': {
+            'identity': {
+                'visibility': "not_null",
+                'formatter': 'format_generated_when',
+            },
+            'generated': {
+                'visibility': "not_null",
+                'formatter': 'format_generated_when',
+            },
+            'collOid': {'visibility': "not_null"},
+            'location': {'visibility': "never_show"},
+        }
+    },
     'Constraint': {
         'fields': {
             'location': {'visibility': "never_show"},
@@ -1773,7 +1765,7 @@ class NodeFormatter(object):
         #       for a node 'signature'
         # TODO: this should be done in a class method
         self.__list_types = ["List *"]
-        self.__node_types = ["Node *", "Expr *", "FromExpr *", "OnConflictExpr *", "RangeVar *", "TypeName *", "ExprContext *", "MemoryContext *"]
+        self.__node_types = ["Node *", "Expr *", "FromExpr *", "OnConflictExpr *", "RangeVar *", "TypeName *", "ExprContext *", "MemoryContext *", "CollateClause *"]
 
         # TODO: Make the node lookup able to handle inherited types(like Plan nodes)
         self.__type_str = str(node['type'])
