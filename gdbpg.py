@@ -1194,6 +1194,19 @@ def format_partition_spec(node, indent=0):
 
     return add_indent(retval, indent)
 
+def format_generated_when(node, field):
+    generated_when = {
+        'a': 'ATTRIBUTE_IDENTITY_ALWAYS',
+        'd': 'ATTRIBUTE_IDENTITY_BY_DEFAULT',
+    }
+
+    fk_char = format_char(node[field])
+
+    if generated_when.get(fk_char) != None:
+        return generated_when.get(fk_char)
+
+    return fk_char
+
 def format_foreign_key_matchtype(node, field):
     foreign_key_matchtypes = {
         'f': 'FKCONSTR_MATCH_FULL',
@@ -1669,6 +1682,16 @@ ALWAYS_SHOW = "always_show"
 FORMATTER_OVERRIDES = {
     'Constraint': {
         'fields': {
+            'location': {'visibility': "never_show"},
+            'conname': {'visibility': "not_null"},
+            'cooked_expr': {'visibility': "not_null"},
+            'generated_when': {
+                'visibility': "not_null",
+                'formatter': 'format_generated_when',
+            },
+            'indexname': {'visibility': "not_null"},
+            'indexspace': {'visibility': "not_null"},
+            'access_method': {'visibility': "not_null"},
             'fk_matchtype': {
                 'visibility': "not_null",
                 'formatter': 'format_foreign_key_matchtype',
@@ -1682,7 +1705,6 @@ FORMATTER_OVERRIDES = {
                 'formatter': 'format_foreign_key_actions',
             },
             'old_pktable_oid': {'visibility': "not_null"},
-            'location': {'visibility': "never_show"},
         },
         'datatype_methods': {
          }
