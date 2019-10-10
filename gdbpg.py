@@ -1038,11 +1038,6 @@ def format_node(node, indent=0):
 
         retval = format_cdb_process(node)
 
-   # elif is_a(node, 'Constraint'):
-   #     node = cast(node, 'Constraint')
-
-   #     retval = format_constraint(node)
-
     elif is_a(node, 'OidList'):
         retval = 'OidList: %s' % format_oid_list(node)
 
@@ -1227,7 +1222,10 @@ def format_foreign_key_matchtype(node, field):
 
     fk_char = format_char(node[field])
 
-    return foreign_key_matchtypes.get(fk_char)
+    if foreign_key_matchtypes.get(fk_char) != None:
+        return foreign_key_matchtypes.get(fk_char)
+
+    return fk_char
 
 
 def format_foreign_key_actions(node, field):
@@ -1241,58 +1239,10 @@ def format_foreign_key_actions(node, field):
 
     fk_char = format_char(node[field])
 
-    return foreign_key_actions.get(fk_char)
+    if foreign_key_actions.get(fk_char) != None:
+        return foreign_key_actions.get(fk_char)
 
-def format_constraint(node, indent=0):
-    retval = 'Constraint [contype=%(contype)s conname=%(conname)s deferrable=%(deferrable)s initdeferred=%(initdeferred)s location=%(location)s is_no_inherit=%(is_no_inherit)s' % {
-        'contype': node['contype'],
-        'conname': getchars(node['conname']),
-        'deferrable': (int(node['deferrable']) == 1),
-        'initdeferred': (int(node['initdeferred']) == 1),
-        'location': node['location'],
-        'is_no_inherit': (int(node['is_no_inherit']) == 1),
-    }
-
-    if (str(node['indexname']) != '0x0'):
-        retval += ' indexname=%s' % getchars(node['indexname'])
-    if (str(node['indexspace']) != '0x0'):
-        retval += ' indexspace=%s' % node['indexspace']
-        retval += ' access_method=%s' % node['access_method']
-
-    fk_matchtype = format_foreign_key_matchtype(node, 'fk_matchtype')
-    if (fk_matchtype != None):
-        retval += ' %s' % fk_matchtype
-
-    fk_upd_action = format_foreign_key_actions(node, 'fk_upd_action')
-    if (fk_upd_action != None):
-        retval += ' %s' % fk_upd_action
-
-    fk_del_action = format_foreign_key_actions(node, 'fk_del_action')
-    if (fk_del_action != None):
-        retval += ' %s' % fk_del_action
-
-    if (node['old_pktable_oid'] != 0):
-        retval += ' old_pktable_oid=%s' % node['old_pktable_oid']
-
-    retval += ' skip_validation=%s' % (int(node['skip_validation']) == 1)
-    retval += ' initially_valid=%s' % (int(node['initially_valid']) == 1)
-
-    retval += ']'
-
-
-    retval += format_optional_node_field(node, 'raw_expr')
-
-    if (str(node['cooked_expr']) != '0x0'):
-        retval += add_indent('[cooked_expr] %s' % node['cooked_expr'], 1, True)
-
-    retval += format_optional_node_list(node, 'keys')
-    retval += format_optional_node_list(node, 'exclusions')
-    retval += format_optional_node_list(node, 'options')
-    retval += format_optional_node_field(node, 'where_clause')
-    retval += format_optional_node_field(node, 'pktable')
-    retval += format_optional_node_field(node, 'old_conpfeqop')
-
-    return add_indent(retval, indent)
+    return fk_char
 
 def format_reloptinfo(node, indent=0):
     retval = 'RelOptInfo (kind=%(kind)s relids=%(relids)s rtekind=%(rtekind)s relid=%(relid)s rows=%(rows)s width=%(width)s)' % {
@@ -1739,26 +1689,32 @@ FORMATTER_OVERRIDES = {
     'Constraint': {
         'fields': {
             'fk_matchtype': {
+                'visibility': "not_null",
                 'formatter': 'format_foreign_key_matchtype',
             },
             'fk_upd_action': {
+                'visibility': "not_null",
                 'formatter': 'format_foreign_key_actions',
             },
             'fk_del_action': {
+                'visibility': "not_null",
                 'formatter': 'format_foreign_key_actions',
+            },
+            'old_pktable_oid': {
+                'visibility': "not_null",
             },
             'location': {
                 'visibility': "never_show",
             },
         },
-        'datatype': {
+        'datatype_methods': {
          }
     }
 }
 
 DEFAULT_DISPLAY_METHODS = {
     'fields': 'format_regular_field',
-    'datatype': {
+    'datatype_methods': {
             'char *': 'format_string_pointer_field',
     },
 }
@@ -1824,9 +1780,9 @@ class NodeFormatter(object):
 
     def get_datatype_override(self, field):
         if self.__formatter_overrides != None:
-            datatype_overrides = self.__formatter_overrides.get('datatype')
+            datatype_overrides = self.__formatter_overrides.get('datatype_methods')
             if datatype_overrides != None:
-                return datatype_overrides.get(str(self.field_type(field)))
+                return datatype_overrides.get(str(self.field_datatype(field)))
         return None
 
     def get_field_override(self, field, override_type):
@@ -1850,7 +1806,7 @@ class NodeFormatter(object):
             return globals()[datatype_override_method]
 
         # Check if this datatype has a generic dumping method
-        default_type_method = self.__default_display_methods['datatype'].get(str(self.field_type(field)))
+        default_type_method = self.__default_display_methods['datatype_methods'].get(str(self.field_datatype(field)))
         if default_type_method != None:
             return globals()[default_type_method]
 
@@ -1924,7 +1880,7 @@ class NodeFormatter(object):
         # This doesn't work for list types for some reason...
         # return (gdb.types.get_basic_type(value.type) == gdb.types.get_basic_type(t))
 
-    def field_type(self, field):
+    def field_datatype(self, field):
         return gdb.types.get_basic_type(self.__node[field].type)
 
     def format(self):
@@ -1953,13 +1909,20 @@ class NodeFormatter(object):
             if display_mode == NEVER_SHOW:
                 continue
 
+            if display_mode == NOT_NULL:
+                field_datatype = self.field_datatype(field)
+                empty_value = gdb.Value(0).cast(field_datatype)
+                if self.__node[field] == empty_value:
+                    continue
+
             display_method = self.get_display_method(field)
             value = display_method(self.__node, field)
 
+
             # TODO: display method did not return a value- fallback to the
             # default display method
-            if value == None:
-                continue
+            #if value == None:
+            #    continue
 
             if fieldcount > 1:
                 # TODO: track current indentation level
