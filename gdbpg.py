@@ -1049,12 +1049,6 @@ def format_node(node, indent=0):
     elif is_a(node, 'IntList'):
         retval = 'IntList: %s' % format_oid_list(node)
 
-    elif is_a(node, 'Query'):
-        node = cast(node, 'Query')
-
-        node_formatter = NodeFormatter(node)
-        retval += node_formatter.format()
-
     elif is_pathnode(node):
         node = cast(node, 'Path')
 
@@ -1233,10 +1227,8 @@ def format_foreign_key_matchtype(node, field):
 
     fk_char = format_char(node[field])
 
-    if (foreign_key_matchtypes.get(fk_char) != None):
-        return "%s=%s"  % (field, foreign_key_matchtypes.get(fk_char))
+    return foreign_key_matchtypes.get(fk_char)
 
-    return "%s=%s" % (field, fk_char)
 
 def format_foreign_key_actions(node, field):
     foreign_key_actions = {
@@ -1249,10 +1241,7 @@ def format_foreign_key_actions(node, field):
 
     fk_char = format_char(node[field])
 
-    if (foreign_key_actions.get(fk_char) != None):
-        return "%s=%s" %(field, foreign_key_actions.get(fk_char))
-
-    return None
+    return foreign_key_actions.get(fk_char)
 
 def format_constraint(node, indent=0):
     retval = 'Constraint [contype=%(contype)s conname=%(conname)s deferrable=%(deferrable)s initdeferred=%(initdeferred)s location=%(location)s is_no_inherit=%(is_no_inherit)s' % {
@@ -1746,17 +1735,55 @@ NEVER_SHOW = "never_show"
 ALWAYS_SHOW = "always_show"
 
 # TODO: generate these overrides in a yaml config file
-REGULAR_FIELD_OVERRIDES = {
+FORMATTER_OVERRIDES = {
     'Constraint': {
-        'fk_matchtype': {
-            'visibility_override': NOT_NULL,
-            'formatter_override': 'format_foreign_key_matchtype'
-        }
+        'fields': {
+            'fk_matchtype': {
+                'formatter': 'format_foreign_key_matchtype',
+            },
+            'fk_upd_action': {
+                'formatter': 'format_foreign_key_actions',
+            },
+            'fk_del_action': {
+                'formatter': 'format_foreign_key_actions',
+            },
+            'location': {
+                'visibility': "never_show",
+            },
+        },
+        'datatype': {
+         }
     }
 }
 
+DEFAULT_DISPLAY_METHODS = {
+    'fields': 'format_regular_field',
+    'datatype': {
+            'char *': 'format_string_pointer_field',
+    },
+}
+
 def format_regular_field(node, field):
-    return "%s=%s" % (field, node[field])
+    return node[field]
+
+def format_string_pointer_field(node, field):
+    return getchars(node[field])
+
+def format_char_field(node, field):
+    char = format_char(node[field])
+    return char
+
+def debug_format_regular_field(node, field):
+    print("debug_format_regular_field: %s[%s]: %s" % (format_type(node['type']), field, node[field]))
+    return node[field]
+
+def debug_format_string_pointer_field(node, field):
+    print("debug_format_string_pointer_field : %s[%s]: %s" % (format_type(node['type']), field, format_string_pointer_field(node,field)))
+    return format_string_pointer(node, field)
+
+def debug_format_char_field(node, field):
+    print("debug_format_char_field: %s[%s]: %s" % (format_type(node['type']), field, format_char_field(node,field)))
+    return format_char_field(node, field)
 
 class NodeFormatter(object):
     # Basic node information
@@ -1774,7 +1801,7 @@ class NodeFormatter(object):
     # TODO: - remove extra fields from __regular_feilds
     #       - set a special method to format these fields in a config file
     __default_regular_display_method = None
-    __regular_overrides = None
+    __formatter_overrides = None
 
     # String representation of the types to match to generate the above lists
     __list_types = None
@@ -1784,30 +1811,57 @@ class NodeFormatter(object):
         #       for a node 'signature'
         # TODO: this should be done in a class method
         self.__list_types = ["List *"]
-        self.__node_types = ["Node *", "Expr *", "FromExpr *", "OnConflictExpr *", "RangeVar *", "TypeName *"]
+        self.__node_types = ["Node *", "Expr *", "FromExpr *", "OnConflictExpr *", "RangeVar *", "TypeName *", "ExprContext *", "MemoryContext *"]
 
         # TODO: Make the node lookup able to handle inherited types(like Plan nodes)
         self.__type_str = str(node['type'])
         self.__node = cast(node, self.type)
 
         # Get methods for display
-        self.__default_regular_display_method = globals()['format_regular_field']
-        self.__regular_overrides = REGULAR_FIELD_OVERRIDES.get(self.type)
+        self.__default_display_methods = DEFAULT_DISPLAY_METHODS
+        self.__default_regular_visibility = ALWAYS_SHOW
+        self.__formatter_overrides = FORMATTER_OVERRIDES.get(self.type)
 
-    def get_regular_override(self, field):
-        if self.__regular_overrides != None:
-            return self.__regular_overrides.get(field)
+    def get_datatype_override(self, field):
+        if self.__formatter_overrides != None:
+            datatype_overrides = self.__formatter_overrides.get('datatype')
+            if datatype_overrides != None:
+                return datatype_overrides.get(str(self.field_type(field)))
         return None
 
-    #TODO: There should be a hierarchy of overrides, and this should pick the one with the highest priority
-    def get_regular_display_method(self, field):
-        overrides = self.get_regular_override(field)
-        if overrides != None:
-            override_string = overrides.get('formatter_override')
-            if override_string != None:
-                return globals()[override_string]
+    def get_field_override(self, field, override_type):
+        if self.__formatter_overrides != None:
+            field_overrides = self.__formatter_overrides.get('fields')
+            if field_overrides != None:
+                field_override = field_overrides.get(field)
+                if field_override != None:
+                    return field_override.get(override_type)
+        return None
 
-        return self.__default_regular_display_method
+    def get_display_method(self, field):
+        # Individual field overrides are a higher priority than type
+        # overrides so print them first
+        field_override_method_name = self.get_field_override(field, 'formatter')
+        if field_override_method_name != None:
+            return globals()[field_override_method_name]
+
+        datatype_override_method = self.get_datatype_override(field)
+        if datatype_override_method != None:
+            return globals()[datatype_override_method]
+
+        # Check if this datatype has a generic dumping method
+        default_type_method = self.__default_display_methods['datatype'].get(str(self.field_type(field)))
+        if default_type_method != None:
+            return globals()[default_type_method]
+
+        return globals()[self.__default_display_methods['fields']]
+
+    def get_regular_display_mode(self, field):
+        override_string = self.get_field_override(field, 'visibility')
+        if override_string != None:
+            return override_string
+
+        return self.__default_regular_visibility
 
 
     @property
@@ -1870,6 +1924,9 @@ class NodeFormatter(object):
         # This doesn't work for list types for some reason...
         # return (gdb.types.get_basic_type(value.type) == gdb.types.get_basic_type(t))
 
+    def field_type(self, field):
+        return gdb.types.get_basic_type(self.__node[field].type)
+
     def format(self):
         retval = self.format_regular_fields()
         for field in self.fields:
@@ -1888,33 +1945,36 @@ class NodeFormatter(object):
 
         newline_padding_chars = len(retval)
 
-        fieldcount = 1
+        fieldcount = 0
         retline = ""
         for field in self.regular_fields:
-            display_method = self.get_regular_display_method(field)
-            # TODO: there are always going to be special cases- how should I handle them?
-            if self.is_type(self.__node[field], "char *"):
-                value = getchars(self.__node[field])
+            fieldcount +=1
+            display_mode = self.get_regular_display_mode(field)
+            if display_mode == NEVER_SHOW:
+                continue
 
-                retline += "%(field)s=%(value)s" % {
-                    'field': field,
-                    'value': value
-                }
-            else:
-                print("%s %s %s", self.type, field, display_method(self.__node, field))
-                retline += display_method(self.__node, field)
+            display_method = self.get_display_method(field)
+            value = display_method(self.__node, field)
 
+            # TODO: display method did not return a value- fallback to the
+            # default display method
+            if value == None:
+                continue
 
-            if fieldcount < len(self.regular_fields):
+            if fieldcount > 1:
                 # TODO: track current indentation level
                 if len(retline) > max_regular_field_chars:
                     retval += retline + '\n' + (' ' * newline_padding_chars)
                     retline = ''
                 else:
                     retline += ' '
-            else:
-                retval += retline
-            fieldcount +=1
+
+            retline += "%(field)s=%(value)s" % {
+                'field': field,
+                'value': value
+            }
+
+        retval += retline
         retval += ']'
 
         return retval
