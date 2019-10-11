@@ -1543,6 +1543,9 @@ class NodeFormatter(object):
     __node_fields = None
     __list_fields = None
 
+    # Some node types are sub-types of other fields, for example a JoinState inherits a PlanState
+    __nested_nodes = None
+
     # Handle extra fields differently than other types
     # TODO: - remove extra fields from __regular_feilds
     #       - set a special method to format these fields in a config file
@@ -1552,15 +1555,18 @@ class NodeFormatter(object):
     # String representation of the types to match to generate the above lists
     __list_types = None
     __node_types = None
-    def __init__(self, node):
+    def __init__(self, node, typecast=None):
         # TODO: get node and list types from yaml config OR check each field
         #       for a node 'signature'
         # TODO: this should be done in a class method
         self.__list_types = ["List *"]
         self.__node_types = ["Node *", "Expr *", "FromExpr *", "OnConflictExpr *", "RangeVar *", "TypeName *", "ExprContext *", "MemoryContext *", "CollateClause *", "struct SelectStmt *", "Alias *", "struct Plan *"]
+        self.__inherited_node_types = ['PlanState', 'JoinState']
 
         # TODO: Make the node lookup able to handle inherited types(like Plan nodes)
-        self.__type_str = str(node['type'])
+        if typecast == None:
+            typecast = str(node['type'])
+        self.__type_str = typecast
         self.__node = cast(node, self.type)
 
         # Get methods for display
@@ -1656,14 +1662,32 @@ class NodeFormatter(object):
         if self.__all_fields == None:
             self.__all_fields = []
             t = gdb.lookup_type(self.type)
-            for field in t.values():
-                # TODO: Handle compound types here?
-                # Skip the node['type'] fields
-                if field.name == "type":
-                    continue
 
-                elif field.name == "xpr" and self.is_type(field, "Expr"):
-                    continue
+            for index in range(0, len(t.values())):
+                field = t.values()[index]
+                if index == 0:
+                    # The node['type'] field is just a tag that we already know
+                    skip = False
+                    if field.name == "type":
+                        skip = True
+                    # The node['xpr'] field is just a wrapper around node['type']
+                    elif field.name == "xpr" and self.is_type(field, "Expr"):
+                        skip = True
+                    # If the first field is an inherited type, we dump the
+                    # sub fields recursively in self.format()
+                    else:
+                        for tag in self.__inherited_node_types:
+                            if self.is_type(field, tag):
+                                skip = True
+
+                                nested_node = NodeFormatter(self.__node, str(field.type))
+                                if self.__nested_nodes == None:
+                                    self.__nested_nodes = []
+                                self.__nested_nodes.append((field.name, nested_node))
+                                break
+
+                    if skip:
+                        continue
 
                 self.__all_fields.append(field.name)
 
@@ -1716,6 +1740,10 @@ class NodeFormatter(object):
 
     def format(self):
         retval = self.format_regular_fields()
+
+        # If this is a nested node type, dump sub types
+        retval += self.format_nested_fields()
+
         for field in self.fields:
             if field in self.__regular_fields:
                 continue
@@ -1736,7 +1764,7 @@ class NodeFormatter(object):
 
     def format_regular_fields(self):
         # TODO: get this value from config file
-        max_regular_field_chars = 165
+        max_regular_field_chars = 140
         retval = self.type
         retval += " ["
 
@@ -1789,6 +1817,14 @@ class NodeFormatter(object):
         retval += retline
         retval += ']'
 
+        return retval
+
+    def format_nested_fields(self):
+        retval = ''
+        if self.__nested_nodes != None:
+            for fieldname, node in self.__nested_nodes:
+                retval += add_indent('[%s]' % fieldname, 1, True)
+                retval += add_indent(node.format(), 2, True)
         return retval
 
 class PgPrintCommand(gdb.Command):
