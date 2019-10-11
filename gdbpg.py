@@ -813,11 +813,6 @@ def format_node(node, indent=0):
 
         retval = format_sublink(node)
 
-    elif is_a(node, 'JoinExpr'):
-        node = cast(node, 'JoinExpr')
-
-        retval = format_join_expr(node)
-
     elif is_a(node, 'AlterPartitionCmd'):
         node = cast(node, 'AlterPartitionCmd')
 
@@ -1295,13 +1290,6 @@ def format_bool_expr(node, indent=0):
 
     return add_indent(retval, indent)
 
-def format_from_expr(node, indent=0):
-    retval = 'FromExpr'
-    retval += format_optional_node_list(node, 'fromlist')
-    retval += format_optional_node_field(node, 'quals')
-
-    return add_indent(retval, indent)
-
 def format_sublink(node, indent=0):
     retval = """SubLink [subLinkType=%(subLinkType)s location=%(location)s]""" % {
         'subLinkType': node['subLinkType'],
@@ -1311,19 +1299,6 @@ def format_sublink(node, indent=0):
     retval += format_optional_node_field(node, 'testexpr')
     retval += format_optional_node_list(node, 'operName')
     retval += format_optional_node_field(node, 'subselect')
-
-    return add_indent(retval, indent)
-
-def format_join_expr(node, indent=0):
-    retval = """JoinExpr [jointype=%(jointype)s isNatural=%(isNatural)s]""" % {
-        'jointype': node['jointype'],
-        'isNatural': (int(node['isNatural']) == 1),
-    }
-
-    retval += format_optional_node_field(node, 'larg')
-    retval += format_optional_node_field(node, 'rarg')
-    retval += format_optional_node_list(node, 'usingClause')
-    retval += format_optional_node_field(node, 'quals')
 
     return add_indent(retval, indent)
 
