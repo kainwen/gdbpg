@@ -727,11 +727,6 @@ def format_node(node, indent=0):
     elif is_a(node, 'PlannerInfo'):
         retval = format_planner_info(node)
 
-    elif is_a(node, 'PlannedStmt'):
-        node = cast(node, 'PlannedStmt')
-
-        retval = format_planned_stmt(node)
-
     elif is_a(node, 'List'):
         node = cast(node, 'List')
 
@@ -955,38 +950,6 @@ rte:
         'rte':
         format_node_array(info['simple_rte_array'], 1,
                           int(info['simple_rel_array_size']))
-    }
-
-    return add_indent(retval, indent)
-
-
-def format_planned_stmt(plan, indent=0):
-
-    retval = '''          type: %(type)s
-   can set tag: %(can_set_tag)s
-     transient: %(transient)s
-               
-     plan tree: %(tree)s
-   range table:
-%(rtable)s
- relation OIDs: %(relation_oids)s
-   result rels: %(result_rels)s
-  utility stmt: %(util_stmt)s
-      subplans: %(subplans)s''' % {
-        'type': plan['commandType'],
-    #'qid' : plan['queryId'],
-    #'nparam' : plan['nParamExec'],
-    #'has_returning' : (int(plan['hasReturning']) == 1),
-    #'has_modify_cte' : (int(plan['hasModifyingCTE']) == 1),
-        'can_set_tag': (int(plan['canSetTag']) == 1),
-        'transient': (int(plan['transientPlan']) == 1),
-    #'row_security' : (int(plan['hasRowSecurity']) == 1),
-        'tree': format_plan_tree(plan['planTree']),
-        'rtable': format_node_list(plan['rtable'], 1, True),
-        'relation_oids': format_oid_list(plan['relationOids']),
-        'result_rels': format_oid_list(plan['resultRelations']),
-        'util_stmt': format_node(plan['utilityStmt']),
-        'subplans': format_node_list(plan['subplans'], 1, True)
     }
 
     return add_indent(retval, indent)
@@ -1660,7 +1623,7 @@ class NodeFormatter(object):
         #       for a node 'signature'
         # TODO: this should be done in a class method
         self.__list_types = ["List *"]
-        self.__node_types = ["Node *", "Expr *", "FromExpr *", "OnConflictExpr *", "RangeVar *", "TypeName *", "ExprContext *", "MemoryContext *", "CollateClause *", "struct SelectStmt *", "Alias *"]
+        self.__node_types = ["Node *", "Expr *", "FromExpr *", "OnConflictExpr *", "RangeVar *", "TypeName *", "ExprContext *", "MemoryContext *", "CollateClause *", "struct SelectStmt *", "Alias *", "struct Plan *"]
 
         # TODO: Make the node lookup able to handle inherited types(like Plan nodes)
         self.__type_str = str(node['type'])
