@@ -688,20 +688,10 @@ def format_node(node, indent=0):
 
         retval = format_a_const(node)
 
-    elif is_a(node, 'CaseExpr'):
-        node = cast(node, 'CaseExpr')
-
-        retval = format_case_expr(node)
-
     elif is_a(node, 'CoalesceExpr'):
         node = cast(node, 'CoalesceExpr')
 
         retval = format_coalesce_expr(node)
-
-    elif is_a(node, 'CaseWhen'):
-        node = cast(node, 'CaseWhen')
-
-        retval = format_case_when(node)
 
     elif is_a(node, 'RelOptInfo'):
         node = cast(node, 'RelOptInfo')
@@ -1071,18 +1061,6 @@ def format_a_const(node, indent=0):
 
     return add_indent(retval, indent)
 
-def format_case_expr(node, indent=0):
-    retval = 'CaseExpr [casetype=%(casetype)s casecollid=%(casecollid)s] ' % {
-        'casetype': node['casetype'],
-        'casecollid': node['casecollid'],
-    }
-
-    retval += format_optional_node_field(node, 'arg')
-    retval += format_optional_node_list(node, 'args')
-    retval += format_optional_node_field(node, 'defresult')
-
-    return add_indent(retval, indent)
-
 def format_coalesce_expr(node, indent=0):
     retval = "CoalesceExpr [coalescetype=%(coalescetype)s location=%(location)s]" % {
         'coalescetype': node['coalescetype'],
@@ -1090,16 +1068,6 @@ def format_coalesce_expr(node, indent=0):
         }
 
     retval += format_optional_node_list(node, 'args')
-
-    return add_indent(retval, indent)
-
-def format_case_when(node, indent=0):
-    retval = '''CaseWhen''' % {
-            'result': format_node(node['result'])
-    }
-
-    retval += format_optional_node_field(node, 'expr', skip_tag=True)
-    retval += format_optional_node_field(node, 'result')
 
     return add_indent(retval, indent)
 
@@ -1290,11 +1258,17 @@ def get_list_fields(node):
 
 # Visibility options
 NOT_NULL = "not_null"
+HIDE_INVALID = "hide_invalid"
 NEVER_SHOW = "never_show"
 ALWAYS_SHOW = "always_show"
 
 # TODO: generate these overrides in a yaml config file
 FORMATTER_OVERRIDES = {
+    'CaseWhen': {
+        'fields':{
+            'location': {'visibility': "never_show"},
+        },
+    },
     'ColumnDef': {
         'fields': {
             'identity': {
@@ -1373,12 +1347,19 @@ FORMATTER_OVERRIDES = {
     'TargetEntry': {
         'fields':{
             'expr': {'skip_tag': True},
+            'resname': {'visibility': "not_null"},
+            'ressortgroupref': {'visibility': "not_null"},
+            'resorigtbl': {'visibility': "not_null"},
+            'resorigcol': {'visibility': "not_null"},
+            'resjunk': {'visibility': "not_null"},
         },
     },
     'Var': {
         'fields':{
             'varno': {'formatter': "format_varno_field"},
+            'vartypmod': {'visibility': "hide_invalid"},
             'varcollid': {'visibility': "not_null"},
+            'varlevelsup': {'visibility': "not_null"},
             'location': {'visibility': "never_show"},
         },
     },
@@ -1510,7 +1491,10 @@ def format_optional_oid_list(node, fieldname, skip_tag=False, newLine=False, pri
         node_type = format_type(node[fieldname]['type'])
         if skip_tag == False:
             retval += '[%s] %s' % (fieldname, format_node(node[fieldname]))
-            retval = add_indent(retval, indent, True)
+        else:
+            retval += format_node(node[fieldname])
+
+        retval = add_indent(retval, indent, True)
     elif print_null == True:
         retval += add_indent("[%s] (NIL)" % fieldname, indent, True)
 
@@ -1651,6 +1635,10 @@ class NodeFormatter(object):
         return ALWAYS_SHOW
 
     def is_skip_tag(self, field):
+        # If the global 'show_hidden' is set, always show tag
+        if self.__default_display_methods['show_hidden'] == True:
+            return False
+
         skip_tag = self.get_field_override(field, 'skip_tag')
         if skip_tag != None:
             return skip_tag
@@ -1762,9 +1750,17 @@ class NodeFormatter(object):
             if display_mode == NEVER_SHOW:
                 continue
 
+            # Some fields don't have a meaning if they aren't given a value
             if display_mode == NOT_NULL:
                 field_datatype = self.field_datatype(field)
                 empty_value = gdb.Value(0).cast(field_datatype)
+                if self.__node[field] == empty_value:
+                    continue
+
+            # Some fields are initialized to -1 if they are not used
+            if display_mode == HIDE_INVALID:
+                field_datatype = self.field_datatype(field)
+                empty_value = gdb.Value(-1).cast(field_datatype)
                 if self.__node[field] == empty_value:
                     continue
 
