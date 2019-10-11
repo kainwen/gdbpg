@@ -729,21 +729,6 @@ def format_node(node, indent=0):
 
         retval = format_restrict_info(node)
 
-    elif is_a(node, 'OpExpr'):
-        node = cast(node, 'OpExpr')
-
-        retval = format_op_expr(node)
-
-    elif is_a(node, 'NullIfExpr'):
-        node = cast(node, 'OpExpr')
-
-        retval = format_op_expr(node)
-
-    elif is_a(node, 'DistinctExpr'):
-        node = cast(node, 'OpExpr')
-
-        retval = format_op_expr(node)
-
     elif is_a(node, 'FuncExpr'):
         node = cast(node, 'FuncExpr')
 
@@ -997,35 +982,6 @@ def format_generic_expr_state(node, indent=0):
             'childexpr': format_node(child['expr']),
             'childEvalFunc': child['evalfunc']
     }
-
-
-def format_op_expr(node, indent=0):
-
-    nodetag = 'OpExpr'
-
-    if is_a(cast(node, 'Node'), 'DistinctExpr'):
-        nodetag =  'DistinctExpr'
-
-    if is_a(cast(node, 'Node'), 'NullIfExpr'):
-        nodetag =  'NullIfExpr'
-
-    retval = """%(nodetag)s [opno=%(opno)s opfuncid=%(opfuncid)s opresulttype=%(opresulttype)s""" % {
-        'nodetag': nodetag,
-        'opno': node['opno'],
-        'opfuncid': node['opfuncid'],
-        'opresulttype': node['opresulttype'],
-    }
-
-    if node['opcollid'] != 0:
-        retval += ' opcollid=%s' % node['opcollid']
-    if node['inputcollid'] != 0:
-        retval += ' inputcollid=%s' % node['inputcollid']
-
-    retval += ']'
-
-    retval+= format_optional_node_list(node, 'args', skip_tag=True)
-
-    return add_indent(retval, indent)
 
 def format_func_expr(node, indent=0):
 
@@ -1387,6 +1343,27 @@ FORMATTER_OVERRIDES = {
             'inhRelations': {'formatter': "format_optional_oid_list"},
         }
     },
+    'DistinctExpr': {
+        'fields':{
+            'args': {'skip_tag': True},
+            'opcollid': {'visibility': "not_null"},
+            'inputcollid': {'visibility': "not_null"},
+        },
+    },
+    'NullIfExpr': {
+        'fields':{
+            'args': {'skip_tag': True},
+            'opcollid': {'visibility': "not_null"},
+            'inputcollid': {'visibility': "not_null"},
+        },
+    },
+    'OpExpr': {
+        'fields':{
+            'args': {'skip_tag': True},
+            'opcollid': {'visibility': "not_null"},
+            'inputcollid': {'visibility': "not_null"},
+        },
+    },
     'RangeVar': {
         'fields': {
             'catalogname': {'visibility': "not_null"},
@@ -1401,6 +1378,8 @@ FORMATTER_OVERRIDES = {
     'Var': {
         'fields':{
             'varno': {'formatter': "format_varno_field"},
+            'varcollid': {'visibility': "not_null"},
+            'location': {'visibility': "never_show"},
         },
     },
 }
