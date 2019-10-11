@@ -237,42 +237,6 @@ def format_plan_tree(tree, indent=0):
     return add_indent(retval, indent + 1)
 
 
-
-def format_optional_node_list(node, fieldname, cast_to=None, skip_tag=False, newLine=True, print_null=False, indent=1):
-    if cast_to != None:
-        node = cast(node, cast_to)
-
-    retval = ''
-    indent_add = 0
-    if str(node[fieldname]) != '0x0':
-        if skip_tag == False:
-            retval += add_indent('[%s]' % fieldname, indent, True)
-            indent_add = 1
-
-        if newLine == True:
-            retval += '\n'
-            retval += '%s' % format_node_list(node[fieldname], indent + indent_add, newLine)
-        else:
-            retval += ' %s' % format_node_list(node[fieldname], 0, newLine)
-    elif print_null == True:
-        return add_indent("[%s] (NIL)" % fieldname, indent, True)
-
-    return retval
-
-def format_optional_node_field(node, fieldname, cast_to=None, skip_tag=False, print_null=False, indent=1):
-    if cast_to != None:
-        node = cast(node, cast_to)
-
-    if str(node[fieldname]) != '0x0':
-        if skip_tag == True:
-            return add_indent('%s' % format_node(node[fieldname]), indent, True)
-        else:
-            return add_indent('[%s] %s' % (fieldname, format_node(node[fieldname])), indent, True)
-    elif print_null == True:
-        return add_indent("[%s] (NULL)" % fieldname, indent, True)
-
-    return ''
-
 def format_restrict_info(node, indent=0):
     retval = 'RestrictInfo [is_pushed_down=%(is_pushed_down)s can_join=%(can_join)s outerjoin_delayed=%(outerjoin_delayed)s]' % {
         'push_down': (int(node['is_pushed_down']) == 1),
@@ -1701,6 +1665,11 @@ FORMATTER_OVERRIDES = {
         'datatype_methods': {
          }
     },
+    'CreateStmt': {
+        'fields': {
+            'inhRelations': {'formatter': "format_optional_oid_list"},
+        }
+    },
     'RangeVar': {
         'fields': {
             'catalogname': {'visibility': "not_null"},
@@ -1710,7 +1679,9 @@ FORMATTER_OVERRIDES = {
 }
 
 DEFAULT_DISPLAY_METHODS = {
-    'fields': 'format_regular_field',
+    'regular_fields': 'format_regular_field',
+    'node_fields': 'format_optional_node_field',
+    'list_fields': 'format_optional_node_list',
     'datatype_methods': {
             'char *': 'format_string_pointer_field',
     },
@@ -1727,6 +1698,58 @@ def format_char_field(node, field):
     char = format_char(node[field])
     return char
 
+def format_optional_node_list(node, fieldname, cast_to=None, skip_tag=False, newLine=True, print_null=False, indent=1):
+    if cast_to != None:
+        node = cast(node, cast_to)
+
+    retval = ''
+    indent_add = 0
+    if str(node[fieldname]) != '0x0':
+        if skip_tag == False:
+            retval += add_indent('[%s]' % fieldname, indent, True)
+            indent_add = 1
+
+        if newLine == True:
+            retval += '\n'
+            retval += '%s' % format_node_list(node[fieldname], indent + indent_add, newLine)
+        else:
+            retval += ' %s' % format_node_list(node[fieldname], 0, newLine)
+    elif print_null == True:
+        return add_indent("[%s] (NIL)" % fieldname, indent, True)
+
+    return retval
+
+def format_optional_node_field(node, fieldname, cast_to=None, skip_tag=False, print_null=False, indent=1):
+    if cast_to != None:
+        node = cast(node, cast_to)
+
+    if str(node[fieldname]) != '0x0':
+        if skip_tag == True:
+            return add_indent('%s' % format_node(node[fieldname]), indent, True)
+        else:
+            return add_indent('[%s] %s' % (fieldname, format_node(node[fieldname])), indent, True)
+    elif print_null == True:
+        return add_indent("[%s] (NULL)" % fieldname, indent, True)
+
+    return ''
+
+def format_optional_oid_list(node, fieldname, newLine=False, skip_tag=False, print_null=False, indent=1):
+    retval = ''
+    if str(node[fieldname]) != '0x0':
+        if skip_tag == False:
+            retval += '[%s]' % fieldname
+            indent_add = 1
+
+        if newLine == True:
+            retval += '\n'
+            retval += '%s' % format_oid_list(node[fieldname], indent_add)
+        else:
+            retval += ' %s' % format_oid_list(node[fieldname], 0)
+    elif print_null == True:
+        retval += add_indent("[%s] (NIL)" % fieldname, indent, True)
+
+    return retval
+
 def debug_format_regular_field(node, field):
     print("debug_format_regular_field: %s[%s]: %s" % (format_type(node['type']), field, node[field]))
     return node[field]
@@ -1738,6 +1761,13 @@ def debug_format_string_pointer_field(node, field):
 def debug_format_char_field(node, field):
     print("debug_format_char_field: %s[%s]: %s" % (format_type(node['type']), field, format_char_field(node,field)))
     return format_char_field(node, field)
+
+def debug_format_optional_oid_list(node, fieldname, newLine=False, skip_tag=False, print_null=False, indent=1):
+    print("debug_format_optional_oid_list: %s[%s]: %s" % (format_type(node['type']), fieldname,
+        format_optional_oid_list(node, fieldname, newLine, skip_tag, print_null, indent)))
+
+    return format_optional_oid_list(node, fieldname, newLine, skip_tag, print_null, indent)
+
 
 class NodeFormatter(object):
     # Basic node information
@@ -1801,6 +1831,7 @@ class NodeFormatter(object):
         if field_override_method_name != None:
             return globals()[field_override_method_name]
 
+        # Datatype methods are only for regular fields
         datatype_override_method = self.get_datatype_override(field)
         if datatype_override_method != None:
             return globals()[datatype_override_method]
@@ -1810,7 +1841,15 @@ class NodeFormatter(object):
         if default_type_method != None:
             return globals()[default_type_method]
 
-        return globals()[self.__default_display_methods['fields']]
+        if field in self.__regular_fields:
+            return globals()[self.__default_display_methods['regular_fields']]
+        elif field in self.__node_fields:
+            return globals()[self.__default_display_methods['node_fields']]
+        elif field in self.__list_fields:
+            return globals()[self.__default_display_methods['list_fields']]
+
+        raise Exception("Did not find a display method for %s[%s]" % (self.type, field))
+
 
     def get_display_mode(self, field):
         # If the global 'show_hidden' is set, then this command shal always
@@ -1898,6 +1937,9 @@ class NodeFormatter(object):
     def format(self):
         retval = self.format_regular_fields()
         for field in self.fields:
+            if field in self.__regular_fields:
+                continue
+
             display_mode = self.get_display_mode(field)
             print_null = False
             if display_mode == NEVER_SHOW:
@@ -1905,10 +1947,8 @@ class NodeFormatter(object):
             elif display_mode == ALWAYS_SHOW:
                 print_null = True
 
-            if field in self.node_fields:
-                retval += format_optional_node_field(self.__node, field, print_null=print_null)
-            elif field in self.list_fields:
-                retval += format_optional_node_list(self.__node, field, print_null=print_null)
+            display_method = self.get_display_method(field)
+            retval += display_method(self.__node, field, print_null=print_null)
 
         return retval
 
