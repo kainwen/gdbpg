@@ -568,29 +568,6 @@ def format_type(t, indent=0):
     return add_indent(t, indent)
 
 
-def format_int_list(lst, indent=0):
-    'format list containing integer values directly (not warapped in Node)'
-
-    # handle NULL pointer (for List we return NIL
-    if (str(lst) == '0x0'):
-        return '(NIL)'
-
-    # we'll collect the formatted items into a Python list
-    tlist = []
-    item = lst['head']
-
-    # walk the list until we reach the last item
-    while str(item) != '0x0':
-
-        # get item from the list and just grab 'int_value as int'
-        tlist.append(int(item['data']['int_value']))
-
-        # next item
-        item = item['next']
-
-    return add_indent(str(tlist), indent)
-
-
 def format_oid_list(lst, indent=0):
     'format list containing Oid values directly (not warapped in Node)'
 
@@ -836,11 +813,6 @@ def format_node(node, indent=0):
 
         retval = format_sublink(node)
 
-    elif is_a(node, 'FromExpr'):
-        node = cast(node, 'FromExpr')
-
-        retval = format_from_expr(node)
-
     elif is_a(node, 'JoinExpr'):
         node = cast(node, 'JoinExpr')
 
@@ -1045,7 +1017,7 @@ def format_planned_stmt(plan, indent=0):
         'tree': format_plan_tree(plan['planTree']),
         'rtable': format_node_list(plan['rtable'], 1, True),
         'relation_oids': format_oid_list(plan['relationOids']),
-        'result_rels': format_int_list(plan['resultRelations']),
+        'result_rels': format_oid_list(plan['resultRelations']),
         'util_stmt': format_node(plan['utilityStmt']),
         'subplans': format_node_list(plan['subplans'], 1, True)
     }
@@ -1748,7 +1720,7 @@ class NodeFormatter(object):
         #       for a node 'signature'
         # TODO: this should be done in a class method
         self.__list_types = ["List *"]
-        self.__node_types = ["Node *", "Expr *", "FromExpr *", "OnConflictExpr *", "RangeVar *", "TypeName *", "ExprContext *", "MemoryContext *", "CollateClause *"]
+        self.__node_types = ["Node *", "Expr *", "FromExpr *", "OnConflictExpr *", "RangeVar *", "TypeName *", "ExprContext *", "MemoryContext *", "CollateClause *", "struct SelectStmt *"]
 
         # TODO: Make the node lookup able to handle inherited types(like Plan nodes)
         self.__type_str = str(node['type'])
