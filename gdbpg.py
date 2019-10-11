@@ -658,12 +658,7 @@ def format_node(node, indent=0):
     retval = ''
     type_str = str(node['type'])
 
-    if is_a(node, 'TargetEntry'):
-        node = cast(node, 'TargetEntry')
-
-        retval = format_target_entry(node)
-
-    elif is_a(node, 'SortGroupClause'):
+    if is_a(node, 'SortGroupClause'):
         node = cast(node, 'SortGroupClause')
 
         retval = format_sort_group_clause(node)
@@ -1171,20 +1166,6 @@ def format_sublink(node, indent=0):
 
     return add_indent(retval, indent)
 
-def format_target_entry(node, indent=0):
-    retval = 'TargetEntry [resno=%(resno)s resname=%(name)s ressortgroupref=%(ressortgroupref)s origtbl=%(tbl)s origcol=%(col)s junk=%(junk)s]' % {
-        'resno': node['resno'],
-        'name': getchars(node['resname']),
-        'ressortgroupref': node['ressortgroupref'],
-        'tbl': node['resorigtbl'],
-        'col': node['resorigcol'],
-        'junk': (int(node['resjunk']) == 1),
-    }
-
-    retval += format_optional_node_field(node, 'expr', skip_tag=True)
-
-    return add_indent(retval, indent)
-
 def format_sort_group_clause(node, indent=0):
     retval = 'SortGroupClause [tleSortGroupRef=%(tleSortGroupRef)s eqop=%(eqop)s sortop=%(sortop)s nulls_first=%(nulls_first)s hashable=%(hashable)s]' % {
         'tleSortGroupRef': node['tleSortGroupRef'],
@@ -1412,11 +1393,16 @@ FORMATTER_OVERRIDES = {
             'schemaname': {'visibility': "not_null"},
         }
     },
+    'TargetEntry': {
+        'fields':{
+            'expr': {'skip_tag': True},
+        },
+    },
     'Var': {
         'fields':{
             'varno': {'formatter': "format_varno_field"},
         },
-    }
+    },
 }
 
 DEFAULT_DISPLAY_METHODS = {
@@ -1522,10 +1508,7 @@ def format_optional_node_list(node, fieldname, cast_to=None, skip_tag=False, new
     retval = ''
     indent_add = 0
     if str(node[fieldname]) != '0x0':
-        if is_a(node[fieldname], 'OidList'):
-            return format_optional_oid_list(node, fieldname, skip_tag, newLine, print_null, indent)
-
-        if is_a(node[fieldname], 'IntList'):
+        if is_a(node[fieldname], 'OidList') or is_a(node[fieldname], 'IntList'):
             return format_optional_oid_list(node, fieldname, skip_tag, newLine, print_null, indent)
 
         if skip_tag == False:
@@ -1547,7 +1530,7 @@ def format_optional_oid_list(node, fieldname, skip_tag=False, newLine=False, pri
     if str(node[fieldname]) != '0x0':
         node_type = format_type(node[fieldname]['type'])
         if skip_tag == False:
-            retval += '[%s] %s %s' % (fieldname, node_type, format_oid_list(node[fieldname], 0))
+            retval += '[%s] %s' % (fieldname, format_node(node[fieldname]))
             retval = add_indent(retval, indent, True)
     elif print_null == True:
         retval += add_indent("[%s] (NIL)" % fieldname, indent, True)
@@ -1622,7 +1605,9 @@ class NodeFormatter(object):
         self.__default_regular_visibility = ALWAYS_SHOW
         self.__default_list_visibility = NOT_NULL
         self.__default_node_visibility = NOT_NULL
+        self.__default_skip_tag = False
         self.__formatter_overrides = FORMATTER_OVERRIDES.get(self.type)
+        #print("NodeFormatter:", self.type)
 
     def get_datatype_override(self, field):
         if self.__formatter_overrides != None:
@@ -1686,6 +1671,12 @@ class NodeFormatter(object):
 
         return ALWAYS_SHOW
 
+    def is_skip_tag(self, field):
+        skip_tag = self.get_field_override(field, 'skip_tag')
+        if skip_tag != None:
+            return skip_tag
+
+        return self.__default_skip_tag
 
     @property
     def type(self):
@@ -1769,8 +1760,10 @@ class NodeFormatter(object):
             elif display_mode == ALWAYS_SHOW:
                 print_null = True
 
+            skip_tag = self.is_skip_tag(field)
+
             display_method = self.get_display_method(field)
-            retval += display_method(self.__node, field, print_null=print_null)
+            retval += display_method(self.__node, field, skip_tag=skip_tag, print_null=print_null)
 
         return retval
 
