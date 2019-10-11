@@ -252,19 +252,6 @@ def format_appendplan_list(lst, indent):
     retval = format_node_list(lst, indent, True)
     return add_indent(retval, indent + 1)
 
-def format_alter_table_cmd(node, indent=0):
-    retval = '''AlterTableCmd (subtype=%(subtype)s name=%(name)s behavior=%(behavior)s)''' % {
-        'subtype': node['subtype'],
-        'name': getchars(node['name']),
-        'behavior': node['behavior'],
-    }
-
-    retval += format_optional_node_field(node, 'def')
-    retval += format_optional_node_field(node, 'transform')
-    retval += format_optional_node_list(node, 'partoids')
-
-    return add_indent(retval, indent)
-
 def format_alter_partition_cmd(node, indent=0):
     if (str(node) == '0x0'):
         return '(NIL)'
@@ -791,11 +778,6 @@ def format_node(node, indent=0):
 
         retval = format_planned_stmt(node)
 
-    elif is_a(node, 'AlterTableStmt'):
-        node = cast(node, 'AlterTableStmt')
-
-        retval = format_alter_table_stmt(node)
-
     elif is_a(node, 'List'):
         node = cast(node, 'List')
 
@@ -863,11 +845,6 @@ def format_node(node, indent=0):
         node = cast(node, 'JoinExpr')
 
         retval = format_join_expr(node)
-
-    elif is_a(node, 'AlterTableCmd'):
-        node = cast(node, 'AlterTableCmd')
-
-        retval = format_alter_table_cmd(node)
 
     elif is_a(node, 'AlterPartitionCmd'):
         node = cast(node, 'AlterPartitionCmd')
@@ -1072,36 +1049,6 @@ def format_planned_stmt(plan, indent=0):
         'util_stmt': format_node(plan['utilityStmt']),
         'subplans': format_node_list(plan['subplans'], 1, True)
     }
-
-    return add_indent(retval, indent)
-
-def format_create_stmt(node, indent=0):
-    retval = 'CreateStmt [oncommit=%(oncommit)s tablespacename=%(tablespacename)s if_not_exists=%(if_not_exists)s]' % {
-        'oncommit': node['oncommit'],
-        'tablespacename': node['tablespacename'],
-        'if_not_exists': (int(node['if_not_exists']) == 1),
-        }
-
-    retval += add_indent('[relation] %s' % format_node(node['relation'], 0), 1, True)
-
-    retval += add_indent('[tableElts] %s' % format_node_list(node['tableElts'], 0, True), 1, True)
-
-    if (str(node['inhRelations']) != '0x0'):
-        retval += add_indent('[inhRelations] %s' % format_oid_list(node['inhRelations']), 1, True)
-
-    retval += format_optional_node_field(node, 'ofTypename')
-    retval += format_optional_node_list(node, 'constraints')
-    retval += format_optional_node_list(node, 'options', newLine=False)
-
-    return add_indent(retval, indent)
-
-def format_alter_table_stmt(node, indent=0):
-    retval = 'AlterTableStmt [relkind=%(relkind)s missing_ok=%(missing_ok)s]' % {
-        'relkind': node['relkind'],
-        'missing_ok': (int(node['missing_ok']) == 1),
-    }
-    retval += format_optional_node_field(node, 'relation')
-    retval += format_optional_node_list(node, 'cmds')
 
     return add_indent(retval, indent)
 
@@ -1698,27 +1645,6 @@ def format_char_field(node, field):
     char = format_char(node[field])
     return char
 
-def format_optional_node_list(node, fieldname, cast_to=None, skip_tag=False, newLine=True, print_null=False, indent=1):
-    if cast_to != None:
-        node = cast(node, cast_to)
-
-    retval = ''
-    indent_add = 0
-    if str(node[fieldname]) != '0x0':
-        if skip_tag == False:
-            retval += add_indent('[%s]' % fieldname, indent, True)
-            indent_add = 1
-
-        if newLine == True:
-            retval += '\n'
-            retval += '%s' % format_node_list(node[fieldname], indent + indent_add, newLine)
-        else:
-            retval += ' %s' % format_node_list(node[fieldname], 0, newLine)
-    elif print_null == True:
-        return add_indent("[%s] (NIL)" % fieldname, indent, True)
-
-    return retval
-
 def format_optional_node_field(node, fieldname, cast_to=None, skip_tag=False, print_null=False, indent=1):
     if cast_to != None:
         node = cast(node, cast_to)
@@ -1733,18 +1659,40 @@ def format_optional_node_field(node, fieldname, cast_to=None, skip_tag=False, pr
 
     return ''
 
-def format_optional_oid_list(node, fieldname, newLine=False, skip_tag=False, print_null=False, indent=1):
+def format_optional_node_list(node, fieldname, cast_to=None, skip_tag=False, newLine=True, print_null=False, indent=1):
+    if cast_to != None:
+        node = cast(node, cast_to)
+
     retval = ''
+    indent_add = 0
     if str(node[fieldname]) != '0x0':
+        if is_a(node[fieldname], 'OidList'):
+            return format_optional_oid_list(node, fieldname, skip_tag, newLine, print_null, indent)
+
+        if is_a(node[fieldname], 'IntList'):
+            return format_optional_oid_list(node, fieldname, skip_tag, newLine, print_null, indent)
+
         if skip_tag == False:
-            retval += '[%s]' % fieldname
+            retval += add_indent('[%s]' % fieldname, indent, True)
             indent_add = 1
 
         if newLine == True:
             retval += '\n'
-            retval += '%s' % format_oid_list(node[fieldname], indent_add)
+            retval += '%s' % format_node_list(node[fieldname], indent + indent_add, newLine)
         else:
-            retval += ' %s' % format_oid_list(node[fieldname], 0)
+            retval += ' %s' % format_node_list(node[fieldname], 0, newLine)
+    elif print_null == True:
+        return add_indent("[%s] (NIL)" % fieldname, indent, True)
+
+    return retval
+
+def format_optional_oid_list(node, fieldname, skip_tag=False, newLine=False, print_null=False, indent=1):
+    retval = ''
+    if str(node[fieldname]) != '0x0':
+        node_type = format_type(node[fieldname]['type'])
+        if skip_tag == False:
+            retval += '[%s] %s %s' % (fieldname, node_type, format_oid_list(node[fieldname], 0))
+            retval = add_indent(retval, indent, True)
     elif print_null == True:
         retval += add_indent("[%s] (NIL)" % fieldname, indent, True)
 
@@ -1762,9 +1710,14 @@ def debug_format_char_field(node, field):
     print("debug_format_char_field: %s[%s]: %s" % (format_type(node['type']), field, format_char_field(node,field)))
     return format_char_field(node, field)
 
-def debug_format_optional_oid_list(node, fieldname, newLine=False, skip_tag=False, print_null=False, indent=1):
+def debug_format_optional_node_list(node, fieldname, cast_to=None, skip_tag=False, newLine=True, print_null=False, indent=1):
+    print("debug_format_optional_node_list: %s[%s]: %s" % (format_type(node['type']), fieldname,
+        format_optional_node_list(node, fieldname, cast_to, skip_tag, newLine, print_null, indent)))
+    return format_optional_node_list(node, fieldname, cast_to, skip_tag, newLine, print_null, indent)
+
+def debug_format_optional_oid_list(node, fieldname, skip_tag=False, newLine=False, print_null=False, indent=1):
     print("debug_format_optional_oid_list: %s[%s]: %s" % (format_type(node['type']), fieldname,
-        format_optional_oid_list(node, fieldname, newLine, skip_tag, print_null, indent)))
+        format_optional_oid_list(node, fieldname, skip_tag, newLine, print_null, indent)))
 
     return format_optional_oid_list(node, fieldname, newLine, skip_tag, print_null, indent)
 
