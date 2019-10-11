@@ -160,7 +160,6 @@ def format_plan_tree(tree, indent=0):
 
         if is_a(tree, 'HashJoin'):
             retval += format_optional_node_list(tree, 'hashclauses', 'HashJoin')
-            retval += format_optional_node_list(tree, 'hashqualclauses', 'HashJoin')
 
     if is_a(tree, 'Sort'):
         append = cast(tree, 'Sort')
