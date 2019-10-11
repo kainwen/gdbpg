@@ -1535,6 +1535,7 @@ DEFAULT_DISPLAY_METHODS = {
     'list_fields': 'format_optional_node_list',
     'datatype_methods': {
             'char *': 'format_string_pointer_field',
+            'Bitmapset *': 'format_bitmapset_field',
     },
     'show_hidden': False,
 }
@@ -1548,6 +1549,9 @@ def format_string_pointer_field(node, field):
 def format_char_field(node, field):
     char = format_char(node[field])
     return char
+
+def format_bitmapset_field(node, field):
+    return format_bitmapset(node[field])
 
 def format_optional_node_field(node, fieldname, cast_to=None, skip_tag=False, print_null=False, indent=1):
     if cast_to != None:
@@ -1613,6 +1617,10 @@ def debug_format_string_pointer_field(node, field):
 def debug_format_char_field(node, field):
     print("debug_format_char_field: %s[%s]: %s" % (format_type(node['type']), field, format_char_field(node,field)))
     return format_char_field(node, field)
+
+def debug_format_bitmapset_field(node, field):
+    print("debug_format_bitmapset_field: %s[%s]: %s" % (format_type(node['type']), field, format_bitmapset_field(node,field)))
+    return format_bitmapset_field(node, field)
 
 def debug_format_optional_node_list(node, fieldname, cast_to=None, skip_tag=False, newLine=True, print_null=False, indent=1):
     print("debug_format_optional_node_list: %s[%s]: %s" % (format_type(node['type']), fieldname,
