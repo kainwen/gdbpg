@@ -674,11 +674,6 @@ def format_node(node, indent=0):
 
         retval = format_table_like_clause(node)
 
-    elif is_a(node, 'Var'):
-        node = cast(node, 'Var')
-
-        retval = format_var(node)
-
     elif is_a(node, 'Const'):
         node = cast(node, 'Const')
 
@@ -984,51 +979,6 @@ def format_partition_spec(node, indent=0):
 
     return add_indent(retval, indent)
 
-def format_generated_when(node, field):
-    generated_when = {
-        'a': 'ATTRIBUTE_IDENTITY_ALWAYS',
-        'd': 'ATTRIBUTE_IDENTITY_BY_DEFAULT',
-        's': 'ATTRIBUTE_GENERATED_STORED',
-    }
-
-    fk_char = format_char(node[field])
-
-    if generated_when.get(fk_char) != None:
-        return generated_when.get(fk_char)
-
-    return fk_char
-
-def format_foreign_key_matchtype(node, field):
-    foreign_key_matchtypes = {
-        'f': 'FKCONSTR_MATCH_FULL',
-        'p': 'FKCONSTR_MATCH_PARTIAL',
-        's': 'FKCONSTR_MATCH_SIMPLE',
-    }
-
-    fk_char = format_char(node[field])
-
-    if foreign_key_matchtypes.get(fk_char) != None:
-        return foreign_key_matchtypes.get(fk_char)
-
-    return fk_char
-
-
-def format_foreign_key_actions(node, field):
-    foreign_key_actions = {
-        'a': 'FKONSTR_ACTION_NOACTION',
-        'r': 'FKCONSTR_ACTION_RESTRICT',
-        'c': 'FKCONSTR_ACTION_CASCADE',
-        'n': 'FKONSTR_ACTION_SETNULL',
-        'd': 'FKONSTR_ACTION_SETDEFAULT',
-    }
-
-    fk_char = format_char(node[field])
-
-    if foreign_key_actions.get(fk_char) != None:
-        return foreign_key_actions.get(fk_char)
-
-    return fk_char
-
 def format_reloptinfo(node, indent=0):
     retval = 'RelOptInfo (kind=%(kind)s relids=%(relids)s rtekind=%(rtekind)s relid=%(relid)s rows=%(rows)s width=%(width)s)' % {
         'kind': node['reloptkind'],
@@ -1254,40 +1204,6 @@ def format_table_like_clause(node):
 
     return retval
 
-def format_var(node, indent=0):
-    if node['varno'] == 65000:
-        varno = "INNER"
-    elif node['varno'] == 65001:
-        varno = "OUTER"
-    else:
-        varno = node['varno']
-
-    retval = 'Var [varno=%(varno)s varattno=%(attno)s' % {
-        'varno': varno,
-        'attno': node['varattno'],
-
-    }
-
-    if node['varcollid'] != 0:
-        retval += ' varcollid=%s' % node['varcollid']
-
-    retval += ' levelsup=%(levelsup)s' % {
-        'levelsup': node['varlevelsup']
-    }
-
-    if node['varnoold'] != 0:
-        retval += ' varnoold=%s' % node['varnoold']
-
-    if node['varoattno'] != 0:
-        retval += ' varoattno=%s' % node['varoattno']
-
-    if node['location'] != -1:
-        retval += ' location=%s' % node['location']
-
-    retval += ']'
-
-    return add_indent(retval, indent)
-
 def format_const(node, indent=0):
     retval = "Const [consttype=%s" % node['consttype']
     if (str(node['consttypmod']) != '0x0'):
@@ -1376,6 +1292,13 @@ def cast(node, type_name):
     t = gdb.lookup_type(type_name)
     return node.cast(t.pointer())
 
+# TODO: If this is a compound node type, it should return the base type
+def get_base_node_type(node):
+    node = cast(node, "Node")
+    if is_node(node):
+        return format_type(node['type'])
+
+    return None
 
 def add_indent(val, indent, add_newline=False):
     retval = ''
@@ -1490,6 +1413,11 @@ FORMATTER_OVERRIDES = {
             'schemaname': {'visibility': "not_null"},
         }
     },
+    'Var': {
+        'fields':{
+            'varno': {'formatter': "format_varno_field"},
+        },
+    }
 }
 
 DEFAULT_DISPLAY_METHODS = {
@@ -1515,6 +1443,64 @@ def format_char_field(node, field):
 
 def format_bitmapset_field(node, field):
     return format_bitmapset(node[field])
+
+def format_generated_when(node, field):
+    generated_when = {
+        'a': 'ATTRIBUTE_IDENTITY_ALWAYS',
+        'd': 'ATTRIBUTE_IDENTITY_BY_DEFAULT',
+        's': 'ATTRIBUTE_GENERATED_STORED',
+    }
+
+    fk_char = format_char(node[field])
+
+    if generated_when.get(fk_char) != None:
+        return generated_when.get(fk_char)
+
+    return fk_char
+
+def format_foreign_key_matchtype(node, field):
+    foreign_key_matchtypes = {
+        'f': 'FKCONSTR_MATCH_FULL',
+        'p': 'FKCONSTR_MATCH_PARTIAL',
+        's': 'FKCONSTR_MATCH_SIMPLE',
+    }
+
+    fk_char = format_char(node[field])
+
+    if foreign_key_matchtypes.get(fk_char) != None:
+        return foreign_key_matchtypes.get(fk_char)
+
+    return fk_char
+
+
+def format_foreign_key_actions(node, field):
+    foreign_key_actions = {
+        'a': 'FKONSTR_ACTION_NOACTION',
+        'r': 'FKCONSTR_ACTION_RESTRICT',
+        'c': 'FKCONSTR_ACTION_CASCADE',
+        'n': 'FKONSTR_ACTION_SETNULL',
+        'd': 'FKONSTR_ACTION_SETDEFAULT',
+    }
+
+    fk_char = format_char(node[field])
+
+    if foreign_key_actions.get(fk_char) != None:
+        return foreign_key_actions.get(fk_char)
+
+    return fk_char
+
+def format_varno_field(node, field):
+    varno_type = {
+        65000: "INNER_VAR",
+        65001: "OUTER_VAR",
+        65002: "INDEX_VAR",
+    }
+
+    varno = int(node[field])
+    if varno_type.get(varno) != None:
+        return varno_type.get(varno)
+
+    return node[field]
 
 def format_optional_node_field(node, fieldname, cast_to=None, skip_tag=False, print_null=False, indent=1):
     if cast_to != None:
@@ -1570,30 +1556,33 @@ def format_optional_oid_list(node, fieldname, skip_tag=False, newLine=False, pri
     return retval
 
 def debug_format_regular_field(node, field):
-    print("debug_format_regular_field: %s[%s]: %s" % (format_type(node['type']), field, node[field]))
+    print("debug_format_regular_field: %s[%s]: %s" % (get_base_node_type(node), field, node[field]))
     return node[field]
 
 def debug_format_string_pointer_field(node, field):
-    print("debug_format_string_pointer_field : %s[%s]: %s" % (format_type(node['type']), field, format_string_pointer_field(node,field)))
+    print("debug_format_string_pointer_field : %s[%s]: %s" % (get_base_node_type(node), field, format_string_pointer_field(node,field)))
     return format_string_pointer(node, field)
 
 def debug_format_char_field(node, field):
-    print("debug_format_char_field: %s[%s]: %s" % (format_type(node['type']), field, format_char_field(node,field)))
+    print("debug_format_char_field: %s[%s]: %s" % (get_base_node_type(node), field, format_char_field(node,field)))
     return format_char_field(node, field)
 
 def debug_format_bitmapset_field(node, field):
-    print("debug_format_bitmapset_field: %s[%s]: %s" % (format_type(node['type']), field, format_bitmapset_field(node,field)))
+    print("debug_format_bitmapset_field: %s[%s]: %s" % (get_base_node_type(node), field, format_bitmapset_field(node,field)))
     return format_bitmapset_field(node, field)
 
+def debug_format_varno_field(node, field):
+    print("debug_format_varno_field: %s[%s]: %s" % (get_base_node_type(node), field, format_varno_field(node,field)))
+    return format_varno_field(node, field)
+
 def debug_format_optional_node_list(node, fieldname, cast_to=None, skip_tag=False, newLine=True, print_null=False, indent=1):
-    print("debug_format_optional_node_list: %s[%s]: %s" % (format_type(node['type']), fieldname,
+    print("debug_format_optional_node_list: %s[%s]: %s" % (get_base_node_type(node), fieldname,
         format_optional_node_list(node, fieldname, cast_to, skip_tag, newLine, print_null, indent)))
     return format_optional_node_list(node, fieldname, cast_to, skip_tag, newLine, print_null, indent)
 
 def debug_format_optional_oid_list(node, fieldname, skip_tag=False, newLine=False, print_null=False, indent=1):
-    print("debug_format_optional_oid_list: %s[%s]: %s" % (format_type(node['type']), fieldname,
+    print("debug_format_optional_oid_list: %s[%s]: %s" % (get_base_node_type(node), fieldname,
         format_optional_oid_list(node, fieldname, skip_tag, newLine, print_null, indent)))
-
     return format_optional_oid_list(node, fieldname, newLine, skip_tag, print_null, indent)
 
 
@@ -1711,9 +1700,15 @@ class NodeFormatter(object):
             self.__all_fields = []
             t = gdb.lookup_type(self.type)
             for field in t.values():
+                # TODO: Handle compound types here?
                 # Skip the node['type'] fields
-                if field.name != "type":
-                    self.__all_fields.append(field.name)
+                if field.name == "type":
+                    continue
+
+                elif field.name == "xpr" and self.is_type(field, "Expr"):
+                    continue
+
+                self.__all_fields.append(field.name)
 
         return self.__all_fields
 
