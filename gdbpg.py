@@ -462,19 +462,6 @@ def format_partition(node, indent=0):
 
     return add_indent(retval, indent)
 
-def format_type_cast(node, indent=0):
-    if (str(node) == '0x0'):
-        return '(NIL)'
-
-    retval = 'TypeCast [location=%(location)s]' % {
-        'location': node['location'],
-    }
-
-    retval += format_optional_node_field(node, 'typeName')
-    retval += format_optional_node_field(node, 'arg')
-
-    return add_indent(retval, indent)
-
 def format_cdb_process(node, indent=0):
     retval = 'CdbProcess [listenerAddr=%(listenerAddr)s listenerPort=%(listenerPort)s pid=%(pid)s contentid=%(contentid)s]' % {
         'listenerAddr': getchars(node['listenerAddr']),
@@ -727,20 +714,10 @@ def format_node(node, indent=0):
 
         retval = format_case_when(node)
 
-    elif is_a(node, 'RangeTblRef'):
-        node = cast(node, 'RangeTblRef')
-
-        retval = 'RangeTblRef (rtindex=%d)' % (int(node['rtindex']), )
-
     elif is_a(node, 'RelOptInfo'):
         node = cast(node, 'RelOptInfo')
 
         retval = format_reloptinfo(node)
-
-    elif is_a(node, 'RangeTblEntry'):
-        node = cast(node, 'RangeTblEntry')
-
-        retval = format_rte(node)
 
     elif is_a(node, 'GenericExprState'):
         node = cast(node, 'GenericExprState')
@@ -912,11 +889,6 @@ def format_node(node, indent=0):
         node = cast(node, 'PartitionRule')
 
         retval = format_partition_rule(node)
-
-    elif is_a(node, 'TypeCast'):
-        node = cast(node, 'TypeCast')
-
-        retval = format_type_cast(node)
 
     elif is_a(node, 'CdbProcess'):
         node = cast(node, 'CdbProcess')
@@ -1103,21 +1075,6 @@ def format_reloptinfo(node, indent=0):
         'relids': format_bitmapset(node['relids']),
         'rtekind': node['rtekind'],
     }
-
-    return add_indent(retval, indent)
-
-
-def format_rte(node, indent=0):
-    retval = 'RangeTblEntry (rtekind=%(rtekind)s relid=%(relid)s relkind=%(relkind)s' % {
-        'relid': node['relid'],
-        'rtekind': node['rtekind'],
-        'relkind': format_char(node['relkind'])
-    }
-
-    if int(node['inh']) != 0:
-        retval += ' inh=%(inh)s' % { 'inh': (int(node['inh']) == 1) }
-
-    retval += ")"
 
     return add_indent(retval, indent)
 
@@ -1695,7 +1652,7 @@ class NodeFormatter(object):
         #       for a node 'signature'
         # TODO: this should be done in a class method
         self.__list_types = ["List *"]
-        self.__node_types = ["Node *", "Expr *", "FromExpr *", "OnConflictExpr *", "RangeVar *", "TypeName *", "ExprContext *", "MemoryContext *", "CollateClause *", "struct SelectStmt *"]
+        self.__node_types = ["Node *", "Expr *", "FromExpr *", "OnConflictExpr *", "RangeVar *", "TypeName *", "ExprContext *", "MemoryContext *", "CollateClause *", "struct SelectStmt *", "Alias *"]
 
         # TODO: Make the node lookup able to handle inherited types(like Plan nodes)
         self.__type_str = str(node['type'])
