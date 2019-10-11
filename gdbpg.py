@@ -1338,6 +1338,29 @@ FORMATTER_OVERRIDES = {
             'inputcollid': {'visibility': "not_null"},
         },
     },
+    'RangeTblEntry': {
+        'fields': {
+            'relid': {'visibility': "not_null"},
+            'relkind': {'visibility': "not_null"},
+            'rellockmode': {'visibility': "not_null"},
+            'tablesample': {'visibility': "not_null"},
+            'subquery': {'visibility': "not_null"},
+            'security_barrier': {'visibility': "not_null"},
+            'tablefunc': {'visibility': "not_null"},
+            'ctename': {'visibility': "not_null"},
+            'tcelevelsup': {'visibility': "not_null"},
+            'enrname': {'visibility': "not_null"},
+            'enrtuples': {'visibility': "not_null"},
+            'inh': {'visibility': "not_null"},
+            'requiredPerms': {'visibility': "not_null"},
+            'checkAsUser': {'visibility': "not_null"},
+            'selectedCols': {'visibility': "not_null"},
+            'insertedCols': {'visibility': "not_null"},
+            'updatedCols': {'visibility': "not_null"},
+            'extraUpdatedCols': {'visibility': "not_null"},
+            'eref': {'visibility': "never_show"},
+        }
+    },
     'RangeVar': {
         'fields': {
             'catalogname': {'visibility': "not_null"},
