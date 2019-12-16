@@ -54,11 +54,14 @@ def format_plan_tree(tree, indent=0):
 
     if is_a(tree, 'Hash'):
         hash = cast(tree, 'Hash')
-        node_extra += '<skewTable=%(skewTable)s skewColumn=%(skewColumn)s skewInherit=%(skewInherit)s>' %{
-            'skewTable': hash['skewTable'],
-            'skewColumn': hash['skewColumn'],
-            'skewInherit': (int(hash['skewInherit']) == 1),
-        }
+        try:
+            node_extra += '<skewTable=%(skewTable)s skewColumn=%(skewColumn)s skewInherit=%(skewInherit)s>' %{
+                'skewTable': hash['skewTable'],
+                'skewColumn': hash['skewColumn'],
+                'skewInherit': (int(hash['skewInherit']) == 1),
+            }
+        except:
+            pass
 
     if is_a(tree, 'Sort'):
         sort = cast(tree, 'Sort')
@@ -94,12 +97,11 @@ def format_plan_tree(tree, indent=0):
 
     if is_a(tree, 'Motion'):
         motion= cast(tree, 'Motion')
-        node_extra += '<motionType=%(motionType)s sendSorted=%(sendSorted)s motionID=%(motionID)s segidColIdx=%(segidColIdx)s nullsFirst=%(nullsFirst)s>' % {
+        node_extra += '<motionType=%(motionType)s sendSorted=%(sendSorted)s motionID=%(motionID)s segidColIdx=%(segidColIdx)s>' % {
             'motionType': motion['motionType'],
             'sendSorted': (int(motion['sendSorted']) == 1),
             'motionID': motion['motionID'],
             'segidColIdx': motion['segidColIdx'],
-            'nullsFirst': motion['nullsFirst'],
         }
 
 
@@ -141,18 +143,20 @@ def format_plan_tree(tree, indent=0):
 
     if is_a(tree, 'Motion'):
         motion = cast(tree, 'Motion')
-        if str(motion['hashExprs']) != '0x0':
-            numcols = int(motion['hashExprs']['length'])
+        try:
+            if str(motion['hashExprs']) != '0x0':
+                numcols = int(motion['hashExprs']['length'])
 
-            retval += add_indent('[hashExprs]', 1, True)
+                retval += add_indent('[hashExprs]', 1, True)
 
-            hashfunctionoids = '[hashFunctionOids] ['
-            for col in range(0,numcols):
-                hashfunctionoids += '%d ' % motion['hashFuncs'][col]
-            hashfunctionoids +=']'
+                hashfunctionoids = '[hashFunctionOids] ['
+                for col in range(0,numcols):
+                    hashfunctionoids += '%d ' % motion['hashFuncs'][col]
+                hashfunctionoids +=']'
 
-            retval += add_indent(hashfunctionoids, 2, True)
-
+                retval += add_indent(hashfunctionoids, 2, True)
+        except:
+            pass
 
     if is_a(tree, 'HashJoin') or is_a(tree, 'Join') or is_a(tree, 'NestLoop') or is_a(tree, 'MergeJoin'):
         # All join nodes can have this field
@@ -169,14 +173,25 @@ def format_plan_tree(tree, indent=0):
 
         index = ''
         for col in range(0,numcols):
-            index += '[sortColIdx=%(sortColIdx)s sortOperator=%(sortOperator)s collation=%(collation)s, nullsFirst=%(nullsFirst)s]' % {
-                'sortColIdx': append['sortColIdx'][col],
-                'sortOperator': append['sortOperators'][col],
-                'collation': append['collations'][col],
-                'nullsFirst': append['nullsFirst'][col]
-            }
-            if col < numcols-1:
-                index += '\n'
+            try:
+                index += '[sortColIdx=%(sortColIdx)s sortOperator=%(sortOperator)s collation=%(collation)s, nullsFirst=%(nullsFirst)s]' % {
+                    'sortColIdx': append['sortColIdx'][col],
+                    'sortOperator': append['sortOperators'][col],
+                    'collation': append['collations'][col],
+                    'nullsFirst': append['nullsFirst'][col]
+                }
+                if col < numcols-1:
+                    index += '\n'
+            except:
+                index += '[sortColIdx=%(sortColIdx)s sortOperator=%(sortOperator)s' % {
+                    'sortColIdx': append['sortColIdx'][col],
+                    'sortOperator': append['sortOperators'][col],
+                }
+                if str(append['nullsFirst']) != '0x0':
+                    index += " nullsFirst=%s" % append['nullsFirst'][col]
+                index += ']'
+                if col < numcols-1:
+                    index += '\n'
 
         retval += add_indent(index, 2, True)
 
@@ -668,11 +683,6 @@ def format_node(node, indent=0):
 
         retval = format_table_like_clause(node)
 
-    elif is_a(node, 'Const'):
-        node = cast(node, 'Const')
-
-        retval = format_const(node)
-
     elif is_a(node, 'Aggref'):
         node = cast(node, 'Aggref')
 
@@ -718,16 +728,6 @@ def format_node(node, indent=0):
         node = cast(node, 'RestrictInfo')
 
         retval = format_restrict_info(node)
-
-    elif is_a(node, 'FuncExpr'):
-        node = cast(node, 'FuncExpr')
-
-        retval = format_func_expr(node)
-
-    elif is_a(node, 'RelabelType'):
-        node = cast(node, 'RelabelType')
-
-        retval = format_relabel_type(node)
 
     elif is_a(node, 'CoerceViaIO'):
         node = cast(node, 'CoerceViaIO')
@@ -996,24 +996,6 @@ def format_func_expr(node, indent=0):
 
     return add_indent(retval, indent)
 
-def format_relabel_type(node, indent=0):
-
-    retval = """RelabelType [resulttype=%(resulttype)s resulttypmod=%(resulttypmod)s""" % {
-        'resulttype': node['resulttype'],
-        'resulttypmod': node['resulttypmod'],
-    }
-
-    if node['resultcollid'] != 0:
-        retval += ' resultcollid=%s' % node['resultcollid']
-
-    retval += ' relabelformat=%(relabelformat)s]' % {
-        'relabelformat': node['relabelformat'],
-    }
-
-    retval += format_optional_node_field(node, 'arg', skip_tag=True)
-
-    return add_indent(retval, indent)
-
 def format_coerce_via_io(node, indent=0):
 
     retval = """CoerceViaIO [resulttype=%(resulttype)s coerceformat=%(coerceformat)s location=%(location)s""" % {
@@ -1108,33 +1090,6 @@ def format_table_like_clause(node):
 
     return retval
 
-def format_const(node, indent=0):
-    retval = "Const [consttype=%s" % node['consttype']
-    if (str(node['consttypmod']) != '0x0'):
-        retval += " consttypmod=%s" % node['consttypmod']
-
-    if node['constcollid']:
-        retval += " constcollid=%s" % node['constcollid']
-
-    retval += " constlen=%s constvalue=" % node['constlen']
-
-    # Print the value if the type is int4 (23)
-    if(int(node['consttype']) == 23):
-        retval += "%s" % node['constvalue']
-    # Print the value if type is oid
-    elif(int(node['consttype']) == 26):
-        retval += "%s" % node['constvalue']
-    else:
-        retval += "%s" % hex(int(node['constvalue']))
-
-    retval += " constisnull=%(constisnull)s constbyval=%(constbyval)s" % {
-            'constisnull': (int(node['constisnull']) == 1),
-            'constbyval': (int(node['constbyval']) == 1) }
-
-    retval += ']'
-
-    return add_indent(retval, indent)
-
 def format_aggref(node, indent=0):
     retval = '''Aggref (aggfnoid=%(fnoid)s aggtype=%(aggtype)s''' % {
         'fnoid': node['aggfnoid'],
@@ -1183,8 +1138,10 @@ def is_node(l):
     except:
         return False
 
-def is_type(value, type_name):
+def is_type(value, type_name, is_pointer):
     t = gdb.lookup_type(type_name)
+    if(is_pointer):
+        t = t.pointer()
     return (str(value.type) == str(t))
     # This doesn't work for list types for some reason...
     # return (gdb.types.get_basic_type(value.type) == gdb.types.get_basic_type(t))
@@ -1232,27 +1189,27 @@ def getchars(arg):
     return retval
 
 def get_node_fields(node):
-    nodefields = ["Node *", "Expr *"]
+    nodefields = [("Node", True), ("Expr", True)]
     type_name = str(node['type']).replace("T_", "")
 
     t = gdb.lookup_type(type_name)
     fields = []
     for v in t.values():
-        for field in nodefields:
-            if is_type(v, field):
+        for field, is_pointer in nodefields:
+            if is_type(v, field, is_pointer):
                 fields.append(v.name)
 
     return fields
 
 def get_list_fields(node):
-    listfields = ["List *"]
+    listfields = [("List", True)]
     type_name = str(node['type']).replace("T_", "")
 
     t = gdb.lookup_type(type_name)
     fields = []
     for v in t.values():
-        for field in listfields:
-            if is_type(v, field):
+        for field, is_pointer in listfields:
+            if is_type(v, field, is_pointer):
                 fields.append(v.name)
     return fields
 
@@ -1582,9 +1539,12 @@ class NodeFormatter(object):
         # TODO: get node and list types from yaml config OR check each field
         #       for a node 'signature'
         # TODO: this should be done in a class method
-        self.__list_types = ["List *"]
-        self.__node_types = ["Node *", "Expr *", "FromExpr *", "OnConflictExpr *", "RangeVar *", "TypeName *", "ExprContext *", "MemoryContext *", "CollateClause *", "struct SelectStmt *", "Alias *", "struct Plan *"]
-        self.__inherited_node_types = ['PlanState', 'JoinState']
+        self.__list_types = [("List",True)]
+        # Postgres
+        #self.__node_types = [("Node",True), ("Expr", True), ("FromExpr", True), ("OnConflictExpr", True), ("RangeVar", True), ("TypeName", True), ("ExprContext", True), ("MemoryContext", True), ("CollateClause", True), ("struct SelectStmt", True), ("Alias", True), ("struct Plan", True)]
+        # GPDB 4.x
+        self.__node_types = [("Node",True), ("Expr", True), ("FromExpr", True), ("RangeVar", True), ("TypeName", True), ("ExprContext", True), ("MemoryContext", True), ("struct SelectStmt", True), ("Alias", True), ("struct Plan", True)]
+        self.__inherited_node_types = [('PlanState', False), ('JoinState', False)]
 
         # TODO: Make the node lookup able to handle inherited types(like Plan nodes)
         if typecast == None:
@@ -1694,13 +1654,13 @@ class NodeFormatter(object):
                     if field.name == "type":
                         skip = True
                     # The node['xpr'] field is just a wrapper around node['type']
-                    elif field.name == "xpr" and self.is_type(field, "Expr"):
+                    elif field.name == "xpr" and self.is_type(field, "Expr", False):
                         skip = True
                     # If the first field is an inherited type, we dump the
                     # sub fields recursively in self.format()
                     else:
-                        for tag in self.__inherited_node_types:
-                            if self.is_type(field, tag):
+                        for tag, is_pointer in self.__inherited_node_types:
+                            if self.is_type(field, tag, is_pointer):
                                 skip = True
 
                                 nested_node = NodeFormatter(self.__node, str(field.type))
@@ -1723,8 +1683,8 @@ class NodeFormatter(object):
 
             t = gdb.lookup_type(self.type)
             for v in t.values():
-                for field in self.__list_types:
-                    if self.is_type(v, field):
+                for field, is_pointer in self.__list_types:
+                    if self.is_type(v, field, is_pointer):
                         self.__list_fields.append(v.name)
 
         return self.__list_fields
@@ -1736,8 +1696,8 @@ class NodeFormatter(object):
 
             t = gdb.lookup_type(self.type)
             for v in t.values():
-                for field in self.__node_types:
-                    if self.is_type(v, field):
+                for field, is_pointer in self.__node_types:
+                    if self.is_type(v, field, is_pointer):
                         self.__node_fields.append(v.name)
 
         return self.__node_fields
@@ -1752,8 +1712,10 @@ class NodeFormatter(object):
         return self.__regular_fields
 
     # TODO: should this be a class method?
-    def is_type(self, value, type_name):
+    def is_type(self, value, type_name, is_pointer):
         t = gdb.lookup_type(type_name)
+        if(is_pointer):
+            t = t.pointer()
         return (str(value.type) == str(t))
         # This doesn't work for list types for some reason...
         # return (gdb.types.get_basic_type(value.type) == gdb.types.get_basic_type(t))
