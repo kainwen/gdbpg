@@ -582,6 +582,12 @@ def format_type(t, indent=0):
 
     return add_indent(t, indent)
 
+def is_old_style_list(l):
+    try:
+        x = l['head']
+        return True
+    except:
+        return False
 
 def format_oid_list(lst, indent=0):
     'format list containing Oid values directly (not warapped in Node)'
@@ -592,7 +598,7 @@ def format_oid_list(lst, indent=0):
 
     # we'll collect the formatted items into a Python list
     tlist = []
-    try:
+    if is_old_style_list(lst):
         item = lst['head']
 
         # walk the list until we reach the last item
@@ -603,7 +609,7 @@ def format_oid_list(lst, indent=0):
 
             # next item
             item = item['next']
-    except:
+    else:
         for col in range(0, lst['length']):
             element = lst['elements'][col]
             tlist.append(int(element['oid_value']))
@@ -621,7 +627,7 @@ def format_node_list(lst, indent=0, newline=False):
     # we'll collect the formatted items into a Python list
     tlist = []
 
-    try:
+    if is_old_style_list(lst):
         item = lst['head']
 
         # walk the list until we reach the last item
@@ -636,7 +642,7 @@ def format_node_list(lst, indent=0, newline=False):
 
             # next item
             item = item['next']
-    except:
+    else:
         for col in range(0, lst['length']):
             element = lst['elements'][col]
             node = cast(element['ptr_value'], 'Node')
