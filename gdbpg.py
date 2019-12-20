@@ -19,6 +19,13 @@ PathNodes = ['Path', 'AppendOnlyPath', 'AOCSPath', 'ExternalPath', 'PartitionSel
              'CdbMotionPath', 'ForeignPath', 'AppendPath', 'MergeAppendPath', 'ResultPath',
              'HashPath', 'MergePath', 'MaterialPath', 'NestPath', 'JoinPath', 'UniquePath'] 
 
+StateNodes = []
+for node in PlanNodes:
+    StateNodes.append(node + "State")
+
+JoinNodes = ['NestLoop', 'MergeJoin', 'HashJoin', 'Join', 'NestLoopState',
+             'MergeJoinState', 'HashJoinState', 'JoinState']
+
 def format_plan_tree(tree, indent=0):
     'formats a plan (sub)tree, with custom indentation'
 
@@ -870,6 +877,10 @@ def format_node(node, indent=0):
 
         retval = format_plan_tree(node)
 
+    elif is_statenode(node):
+        node_formatter = PlanStateFormatter(node)
+        retval += node_formatter.format()
+
     # TODO: NodeFormatter exceptions in these nodes
     elif is_a(node, "ColumnRef"):
         retval = format_type(type_str)
@@ -890,6 +901,20 @@ def is_pathnode(node):
 
 def is_plannode(node):
     for nodestring in PlanNodes:
+        if is_a(node, nodestring):
+            return True
+
+    return False
+
+def is_statenode(node):
+    for nodestring in StateNodes:
+        if is_a(node, nodestring):
+            return True
+
+    return False
+
+def is_joinnode(node):
+    for nodestring in JoinNodes:
         if is_a(node, nodestring):
             return True
 
@@ -1521,15 +1546,16 @@ def debug_format_optional_oid_list(node, fieldname, skip_tag=False, newLine=Fals
 
 class NodeFormatter(object):
     # Basic node information
-    __node = None
+    _node = None
     __node_type = None
     __type_str = None
 
     # String representations of individual fields in node
     __all_fields = None
-    __regular_fields = None
+    _regular_fields = None
     __node_fields = None
     __list_fields = None
+    _ignore_field_types = None
 
     # Some node types are sub-types of other fields, for example a JoinState inherits a PlanState
     __nested_nodes = None
@@ -1552,13 +1578,12 @@ class NodeFormatter(object):
         #self.__node_types = [("Node",True), ("Expr", True), ("FromExpr", True), ("OnConflictExpr", True), ("RangeVar", True), ("TypeName", True), ("ExprContext", True), ("MemoryContext", True), ("CollateClause", True), ("struct SelectStmt", True), ("Alias", True), ("struct Plan", True)]
         # GPDB 4.x
         self.__node_types = [("Node",True), ("Expr", True), ("FromExpr", True), ("RangeVar", True), ("TypeName", True), ("ExprContext", True), ("MemoryContext", True), ("struct SelectStmt", True), ("Alias", True), ("struct Plan", True)]
-        self.__inherited_node_types = [('PlanState', False), ('JoinState', False)]
 
         # TODO: Make the node lookup able to handle inherited types(like Plan nodes)
         if typecast == None:
             typecast = str(node['type'])
         self.__type_str = typecast
-        self.__node = cast(node, self.type)
+        self._node = cast(node, self.type)
 
         # Get methods for display
         self.__default_display_methods = DEFAULT_DISPLAY_METHODS
@@ -1602,7 +1627,7 @@ class NodeFormatter(object):
         if default_type_method != None:
             return globals()[default_type_method]
 
-        if field in self.__regular_fields:
+        if field in self._regular_fields:
             return globals()[self.__default_display_methods['regular_fields']]
         elif field in self.__node_fields:
             return globals()[self.__default_display_methods['node_fields']]
@@ -1622,7 +1647,7 @@ class NodeFormatter(object):
         if override_string != None:
             return override_string
 
-        if field in self.__regular_fields:
+        if field in self._regular_fields:
             return self.__default_regular_visibility
         if field in self.__list_fields:
             return self.__default_list_visibility
@@ -1655,30 +1680,26 @@ class NodeFormatter(object):
             t = gdb.lookup_type(self.type)
 
             for index in range(0, len(t.values())):
+                skip = False
+
                 field = t.values()[index]
+                # Fields that are either ignored, or have special handlers
+                if self._ignore_field_types is not None:
+                    for tag, is_pointer in self._ignore_field_types:
+                        if self.is_type(field, tag, is_pointer):
+                            skip = True
+
                 if index == 0:
                     # The node['type'] field is just a tag that we already know
-                    skip = False
                     if field.name == "type":
                         skip = True
                     # The node['xpr'] field is just a wrapper around node['type']
                     elif field.name == "xpr" and self.is_type(field, "Expr", False):
                         skip = True
-                    # If the first field is an inherited type, we dump the
-                    # sub fields recursively in self.format()
-                    else:
-                        for tag, is_pointer in self.__inherited_node_types:
-                            if self.is_type(field, tag, is_pointer):
-                                skip = True
-
-                                nested_node = NodeFormatter(self.__node, str(field.type))
-                                if self.__nested_nodes == None:
-                                    self.__nested_nodes = []
-                                self.__nested_nodes.append((field.name, nested_node))
-                                break
-
-                    if skip:
-                        continue
+                    elif field.name == "xprstate" and self.is_type(field, "ExprState", False):
+                        skip = True
+                if skip:
+                    continue
 
                 self.__all_fields.append(field.name)
 
@@ -1689,11 +1710,11 @@ class NodeFormatter(object):
         if self.__list_fields == None:
             self.__list_fields = []
 
-            t = gdb.lookup_type(self.type)
-            for v in t.values():
+            for f in self.fields:
+                v = self._node[f]
                 for field, is_pointer in self.__list_types:
                     if self.is_type(v, field, is_pointer):
-                        self.__list_fields.append(v.name)
+                        self.__list_fields.append(f)
 
         return self.__list_fields
 
@@ -1702,22 +1723,22 @@ class NodeFormatter(object):
         if self.__node_fields == None:
             self.__node_fields = []
 
-            t = gdb.lookup_type(self.type)
-            for v in t.values():
+            for f in self.fields:
+                v = self._node[f]
                 for field, is_pointer in self.__node_types:
                     if self.is_type(v, field, is_pointer):
-                        self.__node_fields.append(v.name)
+                        self.__node_fields.append(f)
 
         return self.__node_fields
 
     @property
     def regular_fields(self):
-        if self.__regular_fields == None:
-            self.__regular_fields = []
+        if self._regular_fields == None:
+            self._regular_fields = []
 
-            self.__regular_fields = [field for field in self.fields if field not in self.list_fields + self.node_fields]
+            self._regular_fields = [field for field in self.fields if field not in self.list_fields + self.node_fields]
 
-        return self.__regular_fields
+        return self._regular_fields
 
     # TODO: should this be a class method?
     def is_type(self, value, type_name, is_pointer):
@@ -1729,16 +1750,16 @@ class NodeFormatter(object):
         # return (gdb.types.get_basic_type(value.type) == gdb.types.get_basic_type(t))
 
     def field_datatype(self, field):
-        return gdb.types.get_basic_type(self.__node[field].type)
+        return gdb.types.get_basic_type(self._node[field].type)
 
     def format(self):
-        retval = self.format_regular_fields()
-
-        # If this is a nested node type, dump sub types
-        retval += self.format_nested_fields()
+        retval = self.type
+        retval += ' '
+        newline_padding_chars = len(retval)
+        retval += self.format_regular_fields(newline_padding_chars+1)
 
         for field in self.fields:
-            if field in self.__regular_fields:
+            if field in self._regular_fields:
                 continue
 
             display_mode = self.get_display_mode(field)
@@ -1751,17 +1772,14 @@ class NodeFormatter(object):
             skip_tag = self.is_skip_tag(field)
 
             display_method = self.get_display_method(field)
-            retval += display_method(self.__node, field, skip_tag=skip_tag, print_null=print_null)
+            retval += display_method(self._node, field, skip_tag=skip_tag, print_null=print_null)
 
         return retval
 
-    def format_regular_fields(self):
+    def format_regular_fields(self, newline_padding_chars):
         # TODO: get this value from config file
         max_regular_field_chars = 140
-        retval = self.type
-        retval += " ["
-
-        newline_padding_chars = len(retval)
+        retval = "["
 
         fieldcount = 0
         retline = ""
@@ -1775,18 +1793,18 @@ class NodeFormatter(object):
             if display_mode == NOT_NULL:
                 field_datatype = self.field_datatype(field)
                 empty_value = gdb.Value(0).cast(field_datatype)
-                if self.__node[field] == empty_value:
+                if self._node[field] == empty_value:
                     continue
 
             # Some fields are initialized to -1 if they are not used
             if display_mode == HIDE_INVALID:
                 field_datatype = self.field_datatype(field)
                 empty_value = gdb.Value(-1).cast(field_datatype)
-                if self.__node[field] == empty_value:
+                if self._node[field] == empty_value:
                     continue
 
             display_method = self.get_display_method(field)
-            value = display_method(self.__node, field)
+            value = display_method(self._node, field)
 
 
             # TODO: display method did not return a value- fallback to the
@@ -1812,13 +1830,73 @@ class NodeFormatter(object):
 
         return retval
 
-    def format_nested_fields(self):
-        retval = ''
-        if self.__nested_nodes != None:
-            for fieldname, node in self.__nested_nodes:
-                retval += add_indent('[%s]' % fieldname, 1, True)
-                retval += add_indent(node.format(), 2, True)
+    def ignore_type(self, field, is_pointer):
+        if self._ignore_field_types is None:
+            self._ignore_field_types = []
+        self._ignore_field_types.append((field, is_pointer))
+
+        # reset list of all fields
+        self.__list_fields = None
+        self.__regular_fields = None
+        self.__all_fields = None
+
+class PlanStateFormatter(NodeFormatter):
+    _join_state = None
+    def __init__(self, node, typecast=None):
+        ignore_field_types = [('PlanState', False), ('JoinState', False), ('struct PlanState', True), ('ScanState', False)]
+        for field, is_pointer in ignore_field_types:
+            self.ignore_type(field, is_pointer)
+
+        super().__init__(node, typecast)
+
+        if is_joinnode(node):
+            self._join_state = NodeFormatter(node, 'JoinState')
+        self._planstate = NodeFormatter(node, 'PlanState')
+
+        # Add ignores to internal formatters
+        for field, is_pointer in self._ignore_field_types:
+            if self._join_state is not None:
+                self._join_state.ignore_type(field, is_pointer)
+            self._planstate.ignore_type(field, is_pointer)
+
+    def format(self):
+        retval = "-> %s " % self.type
+        newline_padding_chars = len(retval)
+        # Dump base planstate
+        retval += self._planstate.format_regular_fields(newline_padding_chars+1)
+
+        # Dump JoinState (if applicable)
+        if self._join_state is not None:
+            retval += '\n'
+            retval += ' ' * newline_padding_chars
+            retval += self._join_state.format_regular_fields(newline_padding_chars+1)
+
+        # Dump node-specific regular fields
+        retval += '\n'
+        retval += ' ' * newline_padding_chars
+        retval += self.format_regular_fields(newline_padding_chars+1)
+
+        for field in self.fields:
+            if field in self._regular_fields:
+                continue
+
+            display_mode = self.get_display_mode(field)
+            print_null = False
+            if display_mode == NEVER_SHOW:
+                continue
+            elif display_mode == ALWAYS_SHOW:
+                print_null = True
+
+            skip_tag = self.is_skip_tag(field)
+
+            display_method = self.get_display_method(field)
+            retval += display_method(self._node, field, skip_tag=skip_tag, print_null=print_null)
+
+        retval += format_optional_node_field(self._planstate._node, 'lefttree', skip_tag=True, print_null=True)
+        retval += format_optional_node_field(self._planstate._node, 'righttree', skip_tag=True, print_null=True)
+
         return retval
+
 
 class PgPrintCommand(gdb.Command):
     "print PostgreSQL structures"
