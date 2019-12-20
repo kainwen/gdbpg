@@ -84,12 +84,19 @@ def format_plan_tree(tree, indent=0):
 
     if is_a(tree, 'Agg'):
         agg = cast(tree, 'Agg')
-        node_extra += '<aggstrategy=%(aggstrategy)s numCols=%(numCols)s numGroups=%(numGroups)s aggParams=%(aggParams)s>' % {
-            'aggstrategy': agg['aggstrategy'],
-            'numCols': agg['numCols'],
-            'numGroups': agg['numGroups'],
-            'aggParams': format_bitmapset(agg['aggParams']),
-        }
+        try:
+            node_extra += '<aggstrategy=%(aggstrategy)s numCols=%(numCols)s numGroups=%(numGroups)s aggParams=%(aggParams)s>' % {
+                'aggstrategy': agg['aggstrategy'],
+                'numCols': agg['numCols'],
+                'numGroups': agg['numGroups'],
+                'aggParams': format_bitmapset(agg['aggParams']),
+            }
+        except:
+            node_extra += '<aggstrategy=%(aggstrategy)s numCols=%(numCols)s numGroups=%(numGroups)s>' % {
+                'aggstrategy': agg['aggstrategy'],
+                'numCols': agg['numCols'],
+                'numGroups': agg['numGroups'],
+            }
 
     if is_a(tree, 'SetOp'):
         setop = cast(tree, 'SetOp')
