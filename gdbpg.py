@@ -1352,6 +1352,8 @@ DEFAULT_DISPLAY_METHODS = {
     'datatype_methods': {
             'char *': 'format_string_pointer_field',
             'Bitmapset *': 'format_bitmapset_field',
+            'struct gpmon_packet_t': 'format_gpmon_packet_field',
+            'struct timeval': 'format_timeval_field',
     },
     'show_hidden': False,
 }
@@ -1427,6 +1429,9 @@ def format_varno_field(node, field):
 
     return node[field]
 
+def format_timeval_field(node, field):
+    return "%s.%s" %(node[field]['tv_sec'], node[field]['tv_usec'])
+
 def format_optional_node_field(node, fieldname, cast_to=None, skip_tag=False, print_null=False, indent=1):
     if cast_to != None:
         node = cast(node, cast_to)
@@ -1479,6 +1484,9 @@ def format_optional_oid_list(node, fieldname, skip_tag=False, newLine=False, pri
         retval += add_indent("[%s] (NIL)" % fieldname, indent, True)
 
     return retval
+
+def format_gpmon_packet_field(node, fieldname, skip_tag=False, newLine=False, print_null=False, indent=1):
+    return "<gpmon_packet>"
 
 def debug_format_regular_field(node, field):
     print("debug_format_regular_field: %s[%s]: %s" % (get_base_node_type(node), field, node[field]))
