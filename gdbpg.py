@@ -1313,14 +1313,14 @@ FORMATTER_OVERRIDES = {
         }
     },
     'DistinctExpr': {
-        'fields':{
+        'fields': {
             'args': {'skip_tag': True},
             'opcollid': {'visibility': "not_null"},
             'inputcollid': {'visibility': "not_null"},
         },
     },
     'NullIfExpr': {
-        'fields':{
+        'fields': {
             'args': {'skip_tag': True},
             'opcollid': {'visibility': "not_null"},
             'inputcollid': {'visibility': "not_null"},
@@ -1331,6 +1331,32 @@ FORMATTER_OVERRIDES = {
             'args': {'skip_tag': True},
             'opcollid': {'visibility': "not_null"},
             'inputcollid': {'visibility': "not_null"},
+        },
+    },
+    'Plan': {
+        'fields': {
+            'lefttree': {
+                  'field_type': 'tree_field',
+                  'visibility': 'not_null',
+                },
+            'righttree': {
+                  'field_type': 'tree_field',
+                  'visibility': 'not_null',
+                },
+        },
+    },
+    'PlanState': {
+        'fields': {
+            'lefttree': {
+                  'field_type': 'tree_field',
+                  'visibility': 'not_null',
+                  'skip_tag': True
+                },
+            'righttree': {
+                  'field_type': 'tree_field',
+                  'visibility': 'not_null',
+                  'skip_tag': True
+                },
         },
     },
     'RangeTblEntry': {
@@ -1354,13 +1380,13 @@ FORMATTER_OVERRIDES = {
             'updatedCols': {'visibility': "not_null"},
             'extraUpdatedCols': {'visibility': "not_null"},
             'eref': {'visibility': "never_show"},
-        }
+        },
     },
     'RangeVar': {
         'fields': {
             'catalogname': {'visibility': "not_null"},
             'schemaname': {'visibility': "not_null"},
-        }
+        },
     },
     'TargetEntry': {
         'fields':{
@@ -1387,6 +1413,7 @@ DEFAULT_DISPLAY_METHODS = {
     'regular_fields': 'format_regular_field',
     'node_fields': 'format_optional_node_field',
     'list_fields': 'format_optional_node_list',
+    'tree_fields': 'format_optional_node_field',
     'datatype_methods': {
             'char *': 'format_string_pointer_field',
             'Bitmapset *': 'format_bitmapset_field',
@@ -1562,12 +1589,14 @@ class NodeFormatter(object):
     _node = None
     __node_type = None
     __type_str = None
+    __parent_node = None
 
     # String representations of individual fields in node
     __all_fields = None
     _regular_fields = None
     __node_fields = None
     __list_fields = None
+    __tree_fields = None
     _ignore_field_types = None
 
     # Some node types are sub-types of other fields, for example a JoinState inherits a PlanState
@@ -1607,6 +1636,30 @@ class NodeFormatter(object):
         self.__formatter_overrides = FORMATTER_OVERRIDES.get(self.type)
         #print("NodeFormatter:", self.type)
 
+    def is_child_node(self):
+        t = gdb.lookup_type(self.type)
+        first_field = t.values()[0]
+
+        if first_field.name == "type":
+            return False
+        elif first_field.name == "xpr":
+            return False
+        elif first_field.name == "xprstate":
+            return False
+
+        return True
+
+    @property
+    def parent_node(self):
+        if self.__parent_node == None:
+            if self.is_child_node():
+                t = gdb.lookup_type(self.type)
+                first_field = t.values()[0]
+
+                self.__parent_node = NodeFormatter(self._node, str(first_field.type))
+        return self.__parent_node
+
+
     def get_datatype_override(self, field):
         if self.__formatter_overrides != None:
             datatype_overrides = self.__formatter_overrides.get('datatype_methods')
@@ -1640,12 +1693,14 @@ class NodeFormatter(object):
         if default_type_method != None:
             return globals()[default_type_method]
 
-        if field in self._regular_fields:
+        if field in self.regular_fields:
             return globals()[self.__default_display_methods['regular_fields']]
-        elif field in self.__node_fields:
+        elif field in self.node_fields:
             return globals()[self.__default_display_methods['node_fields']]
-        elif field in self.__list_fields:
+        elif field in self.list_fields:
             return globals()[self.__default_display_methods['list_fields']]
+        elif field in self.tree_fields:
+            return globals()[self.__default_display_methods['tree_fields']]
 
         raise Exception("Did not find a display method for %s[%s]" % (self.type, field))
 
@@ -1660,11 +1715,11 @@ class NodeFormatter(object):
         if override_string != None:
             return override_string
 
-        if field in self._regular_fields:
+        if field in self.regular_fields:
             return self.__default_regular_visibility
-        if field in self.__list_fields:
+        if field in self.list_fields:
             return self.__default_list_visibility
-        if field in self.__node_fields:
+        if field in self.node_fields:
             return self.__default_node_visibility
 
         return ALWAYS_SHOW
@@ -1696,7 +1751,9 @@ class NodeFormatter(object):
                 skip = False
 
                 field = t.values()[index]
-                # Fields that are either ignored, or have special handlers
+                # TODO: should the ability to ignore fields entirely exist at all?
+                #       This seems to conflict with the visibility settings
+                # Fields that are to be ignored
                 if self._ignore_field_types is not None:
                     for tag, is_pointer in self._ignore_field_types:
                         if self.is_type(field, tag, is_pointer):
@@ -1711,6 +1768,8 @@ class NodeFormatter(object):
                         skip = True
                     elif field.name == "xprstate" and self.is_type(field, "ExprState", False):
                         skip = True
+                    elif self.is_child_node():
+                        skip = True
                 if skip:
                     continue
 
@@ -1718,12 +1777,22 @@ class NodeFormatter(object):
 
         return self.__all_fields
 
+    # TODO: any given field should ONLY be in one of these lists, so I need
+    # to decide on an order of precidence for these lists
     @property
     def list_fields(self):
         if self.__list_fields == None:
             self.__list_fields = []
 
             for f in self.fields:
+                # Honor overrides before all else
+                override_string = self.get_field_override(f, 'field_type')
+                if override_string != None:
+                    if override_string == 'list_field':
+                        self.__list_fields.append(f)
+                    else:
+                        continue
+
                 v = self._node[f]
                 for field, is_pointer in self.__list_types:
                     if self.is_type(v, field, is_pointer):
@@ -1737,6 +1806,13 @@ class NodeFormatter(object):
             self.__node_fields = []
 
             for f in self.fields:
+                override_string = self.get_field_override(f, 'field_type')
+                if override_string != None:
+                    if override_string == 'node_field':
+                        self.__node_fields.append(f)
+                    else:
+                        continue
+
                 v = self._node[f]
                 for field, is_pointer in self.__node_types:
                     if self.is_type(v, field, is_pointer):
@@ -1745,11 +1821,26 @@ class NodeFormatter(object):
         return self.__node_fields
 
     @property
+    def tree_fields(self):
+        if self.__tree_fields == None:
+            self.__tree_fields = []
+            for f in self.fields:
+                override_string = self.get_field_override(f, 'field_type')
+                if override_string != None:
+                    if override_string == 'tree_field':
+                        self.__tree_fields.append(f)
+                    else:
+                        continue
+
+        return self.__tree_fields
+
+    # TODO: Regular fields should be able to be overridden to other data types too
+    @property
     def regular_fields(self):
         if self._regular_fields == None:
             self._regular_fields = []
 
-            self._regular_fields = [field for field in self.fields if field not in self.list_fields + self.node_fields]
+            self._regular_fields = [field for field in self.fields if field not in self.list_fields + self.node_fields + self.tree_fields]
 
         return self._regular_fields
 
@@ -1767,25 +1858,19 @@ class NodeFormatter(object):
 
     def format(self):
         retval = self.type
-        retval += ' '
         newline_padding_chars = len(retval)
-        retval += self.format_regular_fields(newline_padding_chars+1)
+        formatted_fields = self.format_all_regular_fields(newline_padding_chars+1)
 
-        for field in self.fields:
-            if field in self._regular_fields:
-                continue
+        fieldno = 1
+        for field in formatted_fields:
+            retval += field
+            if fieldno < len(formatted_fields):
+                retval += '\n' + ' ' * newline_padding_chars
+            fieldno += 1
 
-            display_mode = self.get_display_mode(field)
-            print_null = False
-            if display_mode == NEVER_SHOW:
-                continue
-            elif display_mode == ALWAYS_SHOW:
-                print_null = True
+        retval += self.format_complex_fields()
 
-            skip_tag = self.is_skip_tag(field)
-
-            display_method = self.get_display_method(field)
-            retval += display_method(self._node, field, skip_tag=skip_tag, print_null=print_null)
+        retval += self.format_tree_nodes()
 
         return retval
 
@@ -1816,8 +1901,7 @@ class NodeFormatter(object):
                 if self._node[field] == empty_value:
                     continue
 
-            display_method = self.get_display_method(field)
-            value = display_method(self._node, field)
+            value = self.format_regular_field(field)
 
 
             # TODO: display method did not return a value- fallback to the
@@ -1843,6 +1927,46 @@ class NodeFormatter(object):
 
         return retval
 
+    def format_regular_field(self, field):
+        display_method = self.get_display_method(field)
+        return display_method(self._node, field)
+
+    def format_complex_fields(self):
+        retval = ""
+        if self.is_child_node():
+            retval += self.parent_node.format_complex_fields()
+
+        for field in self.fields:
+            if field in self.regular_fields:
+                continue
+            if field in self.tree_fields:
+                continue
+            retval += self.format_complex_field(field)
+
+        return retval
+
+    def format_complex_field(self, field):
+        display_mode = self.get_display_mode(field)
+        print_null = False
+        if display_mode == NEVER_SHOW:
+            return ""
+        elif display_mode == ALWAYS_SHOW:
+            print_null = True
+
+        skip_tag = self.is_skip_tag(field)
+
+        display_method = self.get_display_method(field)
+        return display_method(self._node, field, skip_tag=skip_tag, print_null=print_null)
+
+    def format_all_regular_fields(self, offset):
+        formatted_fields = []
+        if self.parent_node != None:
+            formatted_fields += self.parent_node.format_all_regular_fields(offset)
+
+        formatted_fields.append(self.format_regular_fields(offset))
+        return formatted_fields
+
+
     def ignore_type(self, field, is_pointer):
         if self._ignore_field_types is None:
             self._ignore_field_types = []
@@ -1850,66 +1974,24 @@ class NodeFormatter(object):
 
         # reset list of all fields
         self.__list_fields = None
-        self.__regular_fields = None
+        self._regular_fields = None
         self.__all_fields = None
 
-class PlanStateFormatter(NodeFormatter):
-    _join_state = None
-    def __init__(self, node, typecast=None):
-        ignore_field_types = [('PlanState', False), ('JoinState', False), ('struct PlanState', True), ('ScanState', False)]
-        for field, is_pointer in ignore_field_types:
-            self.ignore_type(field, is_pointer)
+    def format_tree_nodes(self):
+        retval = ""
+        for field in self.tree_fields:
+            retval += self.format_complex_field(field)
 
-        super().__init__(node, typecast)
-
-        if is_joinnode(node):
-            self._join_state = NodeFormatter(node, 'JoinState')
-        self._planstate = NodeFormatter(node, 'PlanState')
-
-        # Add ignores to internal formatters
-        for field, is_pointer in self._ignore_field_types:
-            if self._join_state is not None:
-                self._join_state.ignore_type(field, is_pointer)
-            self._planstate.ignore_type(field, is_pointer)
-
-    def format(self):
-        retval = "-> %s " % self.type
-        newline_padding_chars = len(retval)
-        # Dump base planstate
-        retval += self._planstate.format_regular_fields(newline_padding_chars+1)
-
-        # Dump JoinState (if applicable)
-        if self._join_state is not None:
-            retval += '\n'
-            retval += ' ' * newline_padding_chars
-            retval += self._join_state.format_regular_fields(newline_padding_chars+1)
-
-        # Dump node-specific regular fields
-        retval += '\n'
-        retval += ' ' * newline_padding_chars
-        retval += self.format_regular_fields(newline_padding_chars+1)
-
-        for field in self.fields:
-            if field in self._regular_fields:
-                continue
-
-            display_mode = self.get_display_mode(field)
-            print_null = False
-            if display_mode == NEVER_SHOW:
-                continue
-            elif display_mode == ALWAYS_SHOW:
-                print_null = True
-
-            skip_tag = self.is_skip_tag(field)
-
-            display_method = self.get_display_method(field)
-            retval += display_method(self._node, field, skip_tag=skip_tag, print_null=print_null)
-
-        retval += format_optional_node_field(self._planstate._node, 'lefttree', skip_tag=True, print_null=True)
-        retval += format_optional_node_field(self._planstate._node, 'righttree', skip_tag=True, print_null=True)
+        if retval == "" and self.is_child_node():
+            retval += self.parent_node.format_tree_nodes()
 
         return retval
 
+class PlanStateFormatter(NodeFormatter):
+    def format(self):
+        retval = "-> "
+        retval += super().format()
+        return retval
 
 class PgPrintCommand(gdb.Command):
     "print PostgreSQL structures"
