@@ -26,6 +26,8 @@ for node in PlanNodes:
 JoinNodes = ['NestLoop', 'MergeJoin', 'HashJoin', 'Join', 'NestLoopState',
              'MergeJoinState', 'HashJoinState', 'JoinState']
 
+recursion_depth = 0
+
 def format_plan_tree(tree, indent=0):
     'formats a plan (sub)tree, with custom indentation'
 
@@ -337,19 +339,6 @@ def format_pg_part_rule(node, indent=0):
 
     retval += format_optional_node_field(node, 'pNode')
     retval += format_optional_node_field(node, 'topRule')
-
-    return add_indent(retval, indent)
-
-def format_partition_node(node, indent=0):
-    if (str(node) == '0x0'):
-        return '(NIL)'
-
-    retval = 'PartitionNode'
-
-
-    retval += format_optional_node_field(node, 'part')
-    retval += format_optional_node_field(node, 'default_part')
-    retval += format_optional_node_list(node, 'rules')
 
     return add_indent(retval, indent)
 
@@ -683,9 +672,22 @@ def format_node_array(array, start_idx, length, indent=0):
 
     return add_indent(("\n".join(items)), indent)
 
+def max_depth_exceeded():
+    global recursion_depth
+    if recursion_depth >= DEFAULT_DISPLAY_METHODS['max_recursion_depth']:
+        return True
+    return False
 
 def format_node(node, indent=0):
     'format a single Node instance (only selected Node types supported)'
+    global recursion_depth
+    recursion_depth += 1
+    if max_depth_exceeded():
+        recursion_depth -= 1
+        if is_node(node):
+            return "%s %s <max_depth_exceeded>" % (format_type(node['type']), str(node))
+        else:
+            return "%s <max_depth_exceeded>" % str(node)
 
     if str(node) == '0x0':
         return add_indent('(NULL)', indent)
@@ -788,11 +790,6 @@ def format_node(node, indent=0):
         node = cast(node, 'PgPartRule')
 
         retval = format_pg_part_rule(node)
-
-    elif is_a(node, 'PartitionNode'):
-        node = cast(node, 'PartitionNode')
-
-        retval = format_partition_node(node)
 
     elif is_a(node, 'PartitionElem'):
         node = cast(node, 'PartitionElem')
@@ -902,6 +899,7 @@ def format_node(node, indent=0):
         node_formatter = NodeFormatter(node)
         retval += node_formatter.format()
 
+    recursion_depth -= 1
     return add_indent(str(retval), indent)
 
 def is_pathnode(node):
@@ -1319,6 +1317,21 @@ FORMATTER_OVERRIDES = {
             'inputcollid': {'visibility': "not_null"},
         },
     },
+    'EState': {
+        'fields':{
+            'es_plannedstmt': {'visibility': "never_show"},
+            # TODO: These fields crash gdbpg.py
+            'es_sharenode': {'visibility': "never_show"},
+        },
+    },
+    'FuncExprState': {
+        'fields':{
+            # TODO: These fields crash gdbpg.py
+            'fp_arg': {'visibility': "never_show"},
+            'fp_datum': {'visibility': "never_show"},
+            'fp_null': {'visibility': "never_show"},
+        },
+    },
     'NullIfExpr': {
         'fields': {
             'args': {'skip_tag': True},
@@ -1356,6 +1369,12 @@ FORMATTER_OVERRIDES = {
                   'field_type': 'tree_field',
                   'visibility': 'not_null',
                   'skip_tag': True
+                },
+            'plan': {
+                  'visibility': 'never_show',
+                },
+            'state': {
+                  'visibility': 'never_show',
                 },
         },
     },
@@ -1421,6 +1440,7 @@ DEFAULT_DISPLAY_METHODS = {
             'struct timeval': 'format_timeval_field',
     },
     'show_hidden': False,
+    'max_recursion_depth': 6
 }
 
 def format_regular_field(node, field):
@@ -1572,6 +1592,11 @@ def debug_format_bitmapset_field(node, field):
 def debug_format_varno_field(node, field):
     print("debug_format_varno_field: %s[%s]: %s" % (get_base_node_type(node), field, format_varno_field(node,field)))
     return format_varno_field(node, field)
+
+def debug_format_optional_node_field(node, fieldname, cast_to=None, skip_tag=False, print_null=False, indent=1):
+    print("debug_format_optional_node_field: %s[%s]: %s" % (get_base_node_type(node), fieldname, 
+        format_optional_node_field(node, fieldname, cast_to, skip_tag, print_null, indent)))
+    return format_optional_node_field(node, fieldname, cast_to, skip_tag, print_null, indent)
 
 def debug_format_optional_node_list(node, fieldname, cast_to=None, skip_tag=False, newLine=True, print_null=False, indent=1):
     print("debug_format_optional_node_list: %s[%s]: %s" % (get_base_node_type(node), fieldname,
@@ -1796,6 +1821,7 @@ class NodeFormatter(object):
                 v = self._node[f]
                 for field, is_pointer in self.__list_types:
                     if self.is_type(v, field, is_pointer):
+                        #print("list", self.type, f)
                         self.__list_fields.append(f)
 
         return self.__list_fields
@@ -1816,6 +1842,11 @@ class NodeFormatter(object):
                 v = self._node[f]
                 for field, is_pointer in self.__node_types:
                     if self.is_type(v, field, is_pointer):
+                        self.__node_fields.append(f)
+
+                if is_node(v):
+                    if f not in self.list_fields:
+                        #print("node", self.type, f)
                         self.__node_fields.append(f)
 
         return self.__node_fields
@@ -1928,6 +1959,7 @@ class NodeFormatter(object):
         return retval
 
     def format_regular_field(self, field):
+        #print("format regular:", self.type, field)
         display_method = self.get_display_method(field)
         return display_method(self._node, field)
 
@@ -1946,6 +1978,7 @@ class NodeFormatter(object):
         return retval
 
     def format_complex_field(self, field):
+        #print("format complex:", self.type, field)
         display_mode = self.get_display_mode(field)
         print_null = False
         if display_mode == NEVER_SHOW:
@@ -2001,11 +2034,13 @@ class PgPrintCommand(gdb.Command):
                                              gdb.COMPLETE_NONE, False)
 
     def invoke(self, arg, from_tty):
+        global recursion_depth
 
         arg_list = gdb.string_to_argv(arg)
         if len(arg_list) != 1:
             print("usage: pgprint var")
             return
+        recursion_depth = 0
 
         l = gdb.parse_and_eval(arg_list[0])
 
