@@ -1522,10 +1522,16 @@ def format_optional_node_field(node, fieldname, cast_to=None, skip_tag=False, pr
         node = cast(node, cast_to)
 
     if str(node[fieldname]) != '0x0':
+        node_output = format_node(node[fieldname])
+
         if skip_tag == True:
-            return add_indent('%s' % format_node(node[fieldname]), indent, True)
+            return add_indent('%s' % node_output, indent, True)
         else:
-            return add_indent('[%s] %s' % (fieldname, format_node(node[fieldname])), indent, True)
+            retval = '[%s] ' % fieldname
+            if node_output.count('\n') > 0:
+                node_output = add_indent(node_output, 1, True)
+            retval += node_output
+            return add_indent(retval , indent, True)
     elif print_null == True:
         return add_indent("[%s] (NULL)" % fieldname, indent, True)
 
