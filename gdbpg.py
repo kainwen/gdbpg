@@ -520,20 +520,6 @@ def format_param(node, indent=0):
 
     return add_indent(retval, indent)
 
-def format_subplan(node, indent=0):
-    retval = 'SubPlan [subLinkType=%(subLinkType)s plan_id=%(plan_id)s plan_name=%(plan_name)s]' % {
-        'subLinkType': node['subLinkType'],
-        'plan_id': node['plan_id'],
-        'plan_name': node['plan_name'],
-    }
-
-    retval += format_optional_node_field(node, 'testexpr')
-    retval += format_optional_node_list(node, 'paramids')
-    retval += format_optional_node_list(node, 'args')
-
-    return add_indent(retval, indent)
-
-
 def format_partition_rule(node, indent=0):
     retval = '''PartitionRule (parruleid=%(parruleid)s paroid=%(paroid)s parchildrelid=%(parchildrelid)s parparentoid=%(parparentoid)s parisdefault=%(parisdefault)s parname=%(parname)s parruleord=%(parruleord)s partemplatespaceId=%(partemplatespaceId)s)''' % {
         'parruleid': node['parruleid'],
@@ -857,11 +843,6 @@ def format_node(node, indent=0):
         node = cast(node, 'Value')
 
         retval = 'Integer [%s]' % node['val']['ival']
-
-    elif is_a(node, 'SubPlan'):
-        node = cast(node, 'SubPlan')
-
-        retval = format_subplan(node)
 
     elif is_a(node, 'PartitionRule'):
         node = cast(node, 'PartitionRule')
