@@ -696,7 +696,6 @@ def format_node(node, indent=0):
         return add_indent('(NULL)', indent)
 
     retval = ''
-    type_str = str(node['type'])
 
     if is_a(node, 'SortGroupClause'):
         node = cast(node, 'SortGroupClause')
@@ -1163,12 +1162,21 @@ def is_a(n, t):
 
     if not is_node(n):
         return False
+    n = cast(n, 'Node')
 
     return (str(n['type']) == ('T_' + t))
 
+def is_xpr(l):
+    try:
+        x = l['xpr']
+        return True
+    except:
+        return False
 
 def is_node(l):
     '''return True if the value looks like a Node (has 'type' field)'''
+    if is_xpr(l):
+        return True
 
     try:
         x = l['type']
@@ -1193,8 +1201,8 @@ def cast(node, type_name):
 
 # TODO: If this is a compound node type, it should return the base type
 def get_base_node_type(node):
-    node = cast(node, "Node")
     if is_node(node):
+        node = cast(node, "Node")
         return format_type(node['type'])
 
     return None
@@ -1677,7 +1685,7 @@ class NodeFormatter(object):
 
         # TODO: Make the node lookup able to handle inherited types(like Plan nodes)
         if typecast == None:
-            typecast = str(node['type'])
+            typecast = get_base_node_type(node)
         self.__type_str = typecast
         self._node = cast(node, self.type)
 
@@ -1818,9 +1826,9 @@ class NodeFormatter(object):
                     if field.name == "type":
                         skip = True
                     # The node['xpr'] field is just a wrapper around node['type']
-                    elif field.name == "xpr" and self.is_type(field, "Expr", False):
+                    elif field.name == "xpr":
                         skip = True
-                    elif field.name == "xprstate" and self.is_type(field, "ExprState", False):
+                    elif field.name == "xprstate":
                         skip = True
                     elif self.is_child_node():
                         skip = True
