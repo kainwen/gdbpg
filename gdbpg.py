@@ -256,9 +256,12 @@ def format_plan_tree(tree, indent=0):
     elif is_a(tree, 'SubqueryScan'):
         subquery = cast(tree, 'SubqueryScan')
         retval += '\n\t%s' % format_plan_tree(subquery['subplan'], 0)
+    elif is_a(tree, 'Sequence'):
+        sequence = cast(tree, 'Sequence')
+        retval += '\n\t%s' % format_appendplan_list(sequence['subplans'], 0)
     elif is_a(tree, 'ModifyTable'):
         modifytable= cast(tree, 'ModifyTable')
-        retval += '\n\t%(plans)s' % format_appendplan_list(modifytable['plans'], 0)
+        retval += '\n\t%s' % format_appendplan_list(modifytable['plans'], 0)
     else:
         # format all the important fields (similarly to EXPLAIN)
         retval += '\n\t%s' % format_plan_tree(tree['lefttree'], 0)
@@ -904,7 +907,6 @@ def format_node(node, indent=0):
 
 def is_pathnode(node):
     for nodestring in PathNodes:
-        #print "testing %s against %s" % (nodestring, node.address)
         if is_a(node, nodestring):
             return True
 
@@ -1324,12 +1326,26 @@ FORMATTER_OVERRIDES = {
             'es_sharenode': {'visibility': "never_show"},
         },
     },
+    'ExprContext': {
+        'fields':{
+            'ecxt_estate': {'visibility': "never_show"},
+        },
+    },
     'FuncExprState': {
         'fields':{
             # TODO: These fields crash gdbpg.py
             'fp_arg': {'visibility': "never_show"},
             'fp_datum': {'visibility': "never_show"},
             'fp_null': {'visibility': "never_show"},
+        },
+    },
+    'MemoryContextData': {
+        'fields':{
+            'methods': {'visibility': "never_show"},
+            'parent': {'formatter': "minimal_format_memory_context_data_field"},
+            'prevchild': {'formatter': "minimal_format_memory_context_data_field"},
+            'firstchild': {'formatter': "minimal_format_memory_context_data_field"},
+            'nextchild': {'formatter': "minimal_format_memory_context_data_field"},
         },
     },
     'NullIfExpr': {
@@ -1371,9 +1387,6 @@ FORMATTER_OVERRIDES = {
                   'skip_tag': True
                 },
             'plan': {
-                  'visibility': 'never_show',
-                },
-            'state': {
                   'visibility': 'never_show',
                 },
         },
@@ -1435,6 +1448,7 @@ DEFAULT_DISPLAY_METHODS = {
     'tree_fields': 'format_optional_node_field',
     'datatype_methods': {
             'char *': 'format_string_pointer_field',
+            'const char *': 'format_string_pointer_field',
             'Bitmapset *': 'format_bitmapset_field',
             'struct gpmon_packet_t': 'format_gpmon_packet_field',
             'struct timeval': 'format_timeval_field',
@@ -1579,6 +1593,15 @@ def format_optional_oid_list(node, fieldname, skip_tag=False, newLine=False, pri
 def format_gpmon_packet_field(node, fieldname, skip_tag=False, newLine=False, print_null=False, indent=1):
     return "<gpmon_packet>"
 
+def minimal_format_memory_context_data_field(node, fieldname, cast_to=None, skip_tag=False, print_null=False, indent=1):
+    retval = ''
+    if str(node[fieldname]) != '0x0':
+        retval = add_indent("[%s] %s [name=%s]" % (fieldname, node[fieldname].type, format_string_pointer_field(node[fieldname], 'name')), indent, True)
+    elif print_null == True:
+        retval = add_indent("[%s] (NIL)" % fieldname, indent, True)
+
+    return retval
+
 def debug_format_regular_field(node, field):
     print("debug_format_regular_field: %s[%s]: %s" % (get_base_node_type(node), field, node[field]))
     return node[field]
@@ -1600,8 +1623,8 @@ def debug_format_varno_field(node, field):
     return format_varno_field(node, field)
 
 def debug_format_optional_node_field(node, fieldname, cast_to=None, skip_tag=False, print_null=False, indent=1):
-    print("debug_format_optional_node_field: %s[%s]: %s" % (get_base_node_type(node), fieldname, 
-        format_optional_node_field(node, fieldname, cast_to, skip_tag, print_null, indent)))
+    print("debug_format_optional_node_field: %s[%s]: %s, cast_to=%s skip_tag=%s print_null=%s, indent=%s" % (get_base_node_type(node), fieldname,
+        format_optional_node_field(node, fieldname, cast_to, skip_tag, True, indent), cast_to, skip_tag, print_null, indent))
     return format_optional_node_field(node, fieldname, cast_to, skip_tag, print_null, indent)
 
 def debug_format_optional_node_list(node, fieldname, cast_to=None, skip_tag=False, newLine=True, print_null=False, indent=1):
@@ -1827,7 +1850,6 @@ class NodeFormatter(object):
                 v = self._node[f]
                 for field, is_pointer in self.__list_types:
                     if self.is_type(v, field, is_pointer):
-                        #print("list", self.type, f)
                         self.__list_fields.append(f)
 
         return self.__list_fields
@@ -1852,7 +1874,6 @@ class NodeFormatter(object):
 
                 if is_node(v):
                     if f not in self.list_fields:
-                        #print("node", self.type, f)
                         self.__node_fields.append(f)
 
         return self.__node_fields
@@ -1893,8 +1914,11 @@ class NodeFormatter(object):
     def field_datatype(self, field):
         return gdb.types.get_basic_type(self._node[field].type)
 
-    def format(self):
-        retval = self.type
+    def format(self, prefix=None):
+        retval = ''
+        if prefix != None:
+            retval = prefix
+        retval += self.type + ' '
         newline_padding_chars = len(retval)
         formatted_fields = self.format_all_regular_fields(newline_padding_chars+1)
 
@@ -1965,7 +1989,6 @@ class NodeFormatter(object):
         return retval
 
     def format_regular_field(self, field):
-        #print("format regular:", self.type, field)
         display_method = self.get_display_method(field)
         return display_method(self._node, field)
 
@@ -1984,7 +2007,6 @@ class NodeFormatter(object):
         return retval
 
     def format_complex_field(self, field):
-        #print("format complex:", self.type, field)
         display_mode = self.get_display_mode(field)
         print_null = False
         if display_mode == NEVER_SHOW:
@@ -2028,9 +2050,7 @@ class NodeFormatter(object):
 
 class PlanStateFormatter(NodeFormatter):
     def format(self):
-        retval = "-> "
-        retval += super().format()
-        return retval
+        return super().format(prefix='-> ')
 
 class PgPrintCommand(gdb.Command):
     "print PostgreSQL structures"
