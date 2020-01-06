@@ -144,6 +144,8 @@ def format_plan_tree(tree, indent=0):
     retval += format_optional_node_list(tree, 'initPlan')
     retval += format_optional_node_list(tree, 'qual')
 
+    retval += format_optional_node_field(tree, 'flow')
+
     if is_a(tree, 'Result'):
         result = cast(tree, 'Result')
         if str(result['resconstantqual']) != '0x0':
@@ -270,17 +272,6 @@ def format_plan_tree(tree, indent=0):
     return add_indent(retval, indent + 1)
 
 
-def format_restrict_info(node, indent=0):
-    retval = 'RestrictInfo [is_pushed_down=%(is_pushed_down)s can_join=%(can_join)s outerjoin_delayed=%(outerjoin_delayed)s]' % {
-        'push_down': (int(node['is_pushed_down']) == 1),
-        'can_join': (int(node['can_join']) == 1),
-        'outerjoin_delayed': (int(node['outerjoin_delayed']) == 1)
-    }
-    retval += format_optional_node_field(node, 'clause', skip_tag=True)
-    retval += format_optional_node_field(node, 'orclause', skip_tag=True)
-
-    return add_indent(retval, indent)
-
 def format_appendplan_list(lst, indent):
     retval = format_node_list(lst, indent, True)
     return add_indent(retval, indent + 1)
@@ -379,50 +370,6 @@ def format_index_elem(node, indent=0):
     retval += format_optional_node_field(node, 'expr')
     retval += format_optional_node_list(node, 'collation')
     retval += format_optional_node_field(node, 'opclass')
-
-    return add_indent(retval, indent)
-
-def format_path(node, indent=0):
-    extra = ''
-    retval = '%(type)s [pathtype=%(pathtype)s parent=%(parent)s rows=%(rows)s startup_cost=%(startup_cost)s total_cost=%(total_cost)s memory=%(memory)s motionHazard=%(motionHazard)s rescannable=%(rescannable)s sameslice_relids=%(sameslice_relids)s locus=%(locus)s' % {
-        'type': format_type(node['type']),    # type of the Node
-        'pathtype': node['pathtype'],
-        'parent': node['parent'],
-        'rows': node['rows'],
-        'startup_cost': node['startup_cost'],
-        'total_cost': node['total_cost'],
-        'memory': node['memory'],
-        'motionHazard': node['motionHazard'],
-        'rescannable': node['rescannable'],
-        'sameslice_relids': node['sameslice_relids'],
-        'locus': node['locus'].address,
-    }
-
-    if is_a(node, 'JoinPath') or is_a(node, 'NestPath') or is_a(node, 'MergePath') or is_a(node, 'HashPath'):
-        joinpath = cast(node, 'JoinPath')
-        extra = ' jointype=%s' % (joinpath['jointype'])
-
-    retval += '%s]' % (extra)
-
-
-    retval += format_optional_node_field(node, 'parent')
-    retval += format_optional_node_field(node, 'param_info')
-    retval += format_optional_node_list(node, 'pathkeys', newLine=False)
-
-    if is_a(node, 'JoinPath') or is_a(node, 'NestPath') or is_a(node, 'MergePath') or is_a(node, 'HashPath'):
-        joinpath = cast(node, 'JoinPath')
-        retval += format_optional_node_field(joinpath, 'outerjoinpath')
-        retval += format_optional_node_field(joinpath, 'innerjoinpath')
-        retval += format_optional_node_list(joinpath, 'joinrestrictinfo')
-
-    if is_a(node, 'MaterialPath'):
-        retval += format_optional_node_field(node, 'subpath', 'MaterialPath')
-
-    if is_a(node, 'CdbMotionPath'):
-        retval += format_optional_node_field(node, 'subpath', 'CdbMotionPath')
-
-    if is_a(node, 'UniquePath'):
-        retval += format_optional_node_field(node, 'subpath', 'UniquePath')
 
     return add_indent(retval, indent)
 
@@ -713,11 +660,6 @@ def format_node(node, indent=0):
 
         retval = format_coalesce_expr(node)
 
-    elif is_a(node, 'RelOptInfo'):
-        node = cast(node, 'RelOptInfo')
-
-        retval = format_reloptinfo(node)
-
     elif is_a(node, 'GenericExprState'):
         node = cast(node, 'GenericExprState')
 
@@ -733,11 +675,6 @@ def format_node(node, indent=0):
 
     elif is_a(node, 'Plan'):
         retval = format_plan_tree(node)
-
-    elif is_a(node, 'RestrictInfo'):
-        node = cast(node, 'RestrictInfo')
-
-        retval = format_restrict_info(node)
 
     elif is_a(node, 'CoerceViaIO'):
         node = cast(node, 'CoerceViaIO')
@@ -788,11 +725,6 @@ def format_node(node, indent=0):
         node = cast(node, 'IndexElem')
 
         retval = format_index_elem(node)
-
-    elif is_a(node, 'Path'):
-        node = cast(node, 'Path')
-
-        retval = format_path(node)
 
     elif is_a(node, 'PartitionBoundSpec'):
         node = cast(node, 'PartitionBoundSpec')
@@ -861,9 +793,8 @@ def format_node(node, indent=0):
         retval = 'IntList: %s' % format_oid_list(node)
 
     elif is_pathnode(node):
-        node = cast(node, 'Path')
-
-        retval = format_path(node)
+        node_formatter = PlanStateFormatter(node)
+        retval += node_formatter.format()
 
     elif is_plannode(node):
         node = cast(node, 'Plan')
@@ -963,18 +894,6 @@ def format_partition_spec(node, indent=0):
     retval += format_optional_node_list(node, 'partElem')
     retval += format_optional_node_list(node, 'enc_clauses', newLine=False)
     retval += format_optional_node_field(node, 'subSpec')
-
-    return add_indent(retval, indent)
-
-def format_reloptinfo(node, indent=0):
-    retval = 'RelOptInfo (kind=%(kind)s relids=%(relids)s rtekind=%(rtekind)s relid=%(relid)s rows=%(rows)s width=%(width)s)' % {
-        'kind': node['reloptkind'],
-        'rows': node['rows'],
-        'width': node['width'],
-        'relid': node['relid'],
-        'relids': format_bitmapset(node['relids']),
-        'rtekind': node['rtekind'],
-    }
 
     return add_indent(retval, indent)
 
@@ -1308,6 +1227,11 @@ FORMATTER_OVERRIDES = {
             'inputcollid': {'visibility': "not_null"},
         },
     },
+    'EquivalenceClass': {
+        'fields': {
+            'ec_sources': {'formatter': 'minimal_format_node_field', }
+        },
+    },
     'EState': {
         'fields':{
             'es_plannedstmt': {'visibility': "never_show"},
@@ -1351,6 +1275,11 @@ FORMATTER_OVERRIDES = {
             'inputcollid': {'visibility': "not_null"},
         },
     },
+    'Path': {
+        'fields':{
+            'parent': {'formatter': 'minimal_format_node_field'},
+        },
+    },
     'Plan': {
         'fields': {
             'lefttree': {
@@ -1375,9 +1304,7 @@ FORMATTER_OVERRIDES = {
                   'visibility': 'not_null',
                   'skip_tag': True
                 },
-            'plan': {
-                  'visibility': 'never_show',
-                },
+            'plan': { 'formatter': 'minimal_format_node_field', },
         },
     },
     'RangeTblEntry': {
@@ -1582,10 +1509,19 @@ def format_optional_oid_list(node, fieldname, skip_tag=False, newLine=False, pri
 def format_gpmon_packet_field(node, fieldname, skip_tag=False, newLine=False, print_null=False, indent=1):
     return "<gpmon_packet>"
 
+def minimal_format_node_field(node, fieldname, cast_to=None, skip_tag=False, print_null=False, indent=1):
+    retval = ''
+    if str(node[fieldname]) != '0x0':
+        retval = add_indent("[%s] (%s)%s" % (fieldname, node[fieldname].type, node[fieldname]), indent, True)
+    elif print_null == True:
+        retval = add_indent("[%s] (NIL)" % fieldname, indent, True)
+
+    return retval
+
 def minimal_format_memory_context_data_field(node, fieldname, cast_to=None, skip_tag=False, print_null=False, indent=1):
     retval = ''
     if str(node[fieldname]) != '0x0':
-        retval = add_indent("[%s] %s [name=%s]" % (fieldname, node[fieldname].type, format_string_pointer_field(node[fieldname], 'name')), indent, True)
+        retval = add_indent("[%s] (%s)%s [name=%s]" % (fieldname, node[fieldname].type, node[fieldname], format_string_pointer_field(node[fieldname], 'name')), indent, True)
     elif print_null == True:
         retval = add_indent("[%s] (NIL)" % fieldname, indent, True)
 
