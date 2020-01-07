@@ -1225,6 +1225,11 @@ FORMATTER_OVERRIDES = {
             'ecxt_estate': {'visibility': "never_show"},
         },
     },
+    'IndexOptInfo': {
+        'fields': {
+            'rel': {'formatter': 'minimal_format_node_field', }
+        },
+    },
     'FuncExprState': {
         'fields':{
             # TODO: These fields crash gdbpg.py
