@@ -453,20 +453,6 @@ def format_def_elem(node, indent=0):
 
     return add_indent(retval, indent)
 
-def format_param(node, indent=0):
-    if (str(node) == '0x0'):
-        return '(NIL)'
-
-    retval = 'Param (paramkind=%(paramkind)s paramid=%(paramid)s paramtype=%(paramtype)s paramtypmod=%(paramtypmod)s location=%(location)s)' % {
-        'paramkind': node['paramkind'],
-        'paramid': node['paramid'],
-        'paramtype': node['paramtype'],
-        'paramtypmod': node['paramtypmod'],
-        'location': node['location']
-    }
-
-    return add_indent(retval, indent)
-
 def format_partition_rule(node, indent=0):
     retval = '''PartitionRule (parruleid=%(parruleid)s paroid=%(paroid)s parchildrelid=%(parchildrelid)s parparentoid=%(parparentoid)s parisdefault=%(parisdefault)s parname=%(parname)s parruleord=%(parruleord)s partemplatespaceId=%(partemplatespaceId)s)''' % {
         'parruleid': node['parruleid'],
@@ -760,11 +746,6 @@ def format_node(node, indent=0):
         node = cast(node, 'DefElem')
 
         retval = format_def_elem(node)
-
-    elif is_a(node, 'Param'):
-        node = cast(node, 'Param')
-
-        retval = format_param(node)
 
     elif is_a(node, 'String'):
         node = cast(node, 'Value')
@@ -1273,6 +1254,13 @@ FORMATTER_OVERRIDES = {
             'args': {'skip_tag': True},
             'opcollid': {'visibility': "not_null"},
             'inputcollid': {'visibility': "not_null"},
+        },
+    },
+    'Param': {
+        'fields':{
+            'paramtypmod': {'visibility': "hide_invalid"},
+            'paramcollid': {'visibility': "not_null"},
+            'location': {'visibility': "never_show"},
         },
     },
     'Path': {
