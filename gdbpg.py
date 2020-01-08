@@ -3,8 +3,8 @@ import string
 
 # TODO: Put these fields in a config file
 PlanNodes = ['Result', 'Repeat', 'ModifyTable','Append', 'Sequence', 'Motion', 
-        'AOCSScan', 'BitmapAnd', 'BitmapOr', 'Scan', 'SeqScan', 'TableScan',
-        'IndexScan', 'DynamicIndexScan', 'BitmapIndexScan',
+        'AOCSScan', 'BitmapAnd', 'BitmapOr', 'Scan', 'SeqScan', 'DynamicSeqScan',
+        'TableScan', 'IndexScan', 'DynamicIndexScan', 'BitmapIndexScan',
         'BitmapHeapScan', 'BitmapAppendOnlyScan', 'BitmapTableScan',
         'DynamicTableScan', 'TidScan', 'SubqueryScan', 'FunctionScan',
         'TableFunctionScan', 'ValuesScan', 'ExternalScan', 'AppendOnlyScan',
@@ -798,6 +798,8 @@ FORMATTER_OVERRIDES = {
     },
     'Const': {
         'fields': {
+            'consttypmod': {'visibility': "hide_invalid"},
+            'constcollid': {'visibility': "not_null"},
             'location': {'visibility': "never_show"},
         },
     },
@@ -826,6 +828,10 @@ FORMATTER_OVERRIDES = {
                 'formatter': 'format_foreign_key_actions',
             },
             'old_pktable_oid': {'visibility': "not_null"},
+            'trig1Oid': {'visibility': "not_null"},
+            'trig2Oid': {'visibility': "not_null"},
+            'trig3Oid': {'visibility': "not_null"},
+            'trig4Oid': {'visibility': "not_null"},
         },
         'datatype_methods': {
          }
@@ -928,18 +934,6 @@ FORMATTER_OVERRIDES = {
             'parent': {'formatter': 'minimal_format_node_field'},
         },
     },
-    'Plan': {
-        'fields': {
-            'lefttree': {
-                  'field_type': 'tree_field',
-                  'visibility': 'not_null',
-                },
-            'righttree': {
-                  'field_type': 'tree_field',
-                  'visibility': 'not_null',
-                },
-        },
-    },
     'PlanState': {
         'fields': {
             'lefttree': {
@@ -1008,7 +1002,37 @@ FORMATTER_OVERRIDES = {
             'vartypmod': {'visibility': "hide_invalid"},
             'varcollid': {'visibility': "not_null"},
             'varlevelsup': {'visibility': "not_null"},
+            'varoattno': {'visibility': "hide_invalid"},
             'location': {'visibility': "never_show"},
+        },
+    },
+    # Plan Nodes
+    'Plan': {
+        'fields': {
+            'extParam': {'visibility': "not_null"},
+            'allParam': {'visibility': "not_null"},
+            'operatorMemKB': {'visibility': "not_null"},
+            'lefttree': {
+                  'field_type': 'tree_field',
+                  'visibility': 'not_null',
+                },
+            'righttree': {
+                  'field_type': 'tree_field',
+                  'visibility': 'not_null',
+                },
+        },
+    },
+
+    # GPDB Specific Plan nodes
+    'Motion': {
+        'fields': {
+            'hashFuncs': {'visibility': "not_null"},
+            'segidColIdx': {'visibility': "not_null"},
+            'numSortCols': {'visibility': "not_null"},
+            'sortColIdx': {'visibility': "not_null"},
+            'sortOperators': {'visibility': "not_null"},
+            'nullsFirst': {'visibility': "not_null"},
+            'senderSliceInfo': {'visibility': "not_null"},
         },
     },
     # GPDB Specific Partition related nodes
@@ -1038,7 +1062,7 @@ DEFAULT_DISPLAY_METHODS = {
             'struct timeval': 'format_timeval_field',
     },
     'show_hidden': False,
-    'max_recursion_depth': 6
+    'max_recursion_depth': 30
 }
 
 def format_regular_field(node, field):
