@@ -92,26 +92,6 @@ def format_pg_part_rule(node, indent=0):
 
     return add_indent(retval, indent)
 
-def format_partition_elem(node, indent=0):
-    if (str(node) == '0x0'):
-        return '(NIL)'
-
-    retval = 'PartitionElem (partName=%(partName)s isDefault=%(isDefault)s AddPartDesc=%(AddPartDesc)s partno=%(partno)s rrand=%(rrand)s location=%(location)s)' % {
-        'partName': node['partName'],
-        'isDefault': (int(node['isDefault']) == 1),
-        'AddPartDesc': node['AddPartDesc'],
-        'partno': node['partno'],
-        'rrand': node['rrand'],
-        'location': node['location']
-    }
-
-    retval += format_optional_node_field(node, 'boundSpec')
-    retval += format_optional_node_field(node, 'subSpec')
-    retval += format_optional_node_field(node, 'storeAttr')
-    retval += format_optional_node_list(node, 'colencs')
-
-    return add_indent(retval, indent)
-
 def format_index_elem(node, indent=0):
     if (str(node) == '0x0'):
         return '(NIL)'
@@ -129,21 +109,6 @@ def format_index_elem(node, indent=0):
 
     return add_indent(retval, indent)
 
-def format_partition_bound_spec(node, indent=0):
-    if (str(node) == '0x0'):
-        return '(NIL)'
-
-    retval = 'PartitionBoundSpec (pWithTnameStr=%(pWithTnameStr)s location=%(location)s)' % {
-        'pWithTnameStr': node['pWithTnameStr'],
-        'location': node['location'],
-    }
-
-    retval += format_optional_node_field(node, 'partStart')
-    retval += format_optional_node_field(node, 'partEnd')
-    retval += format_optional_node_field(node, 'partEvery')
-    retval += format_optional_node_list(node, 'everyGenList', newLine=False)
-
-    return add_indent(retval, indent)
 
 def format_partition_values_spec(node, indent=0):
     retval = 'PartitionValuesSpec [location=%(location)s]' % {
@@ -151,20 +116,6 @@ def format_partition_values_spec(node, indent=0):
     }
 
     retval += format_optional_node_list(node, 'partValues')
-
-    return add_indent(retval, indent)
-
-def format_partition_range_item(node, indent=0):
-    if (str(node) == '0x0'):
-        return '(NIL)'
-
-    retval = 'PartitionRangeItem (partedge=%(partedge)s everycount=%(everycount)s location=%(location)s)' % {
-        'partedge': node['partedge'],
-        'everycount': node['everycount'],
-        'location': node['location'],
-    }
-
-    retval += format_optional_node_list(node, 'partRangeVal')
 
     return add_indent(retval, indent)
 
@@ -192,20 +143,6 @@ def format_cdb_process(node, indent=0):
         'pid': node['pid'],
         'contentid': node['contentid'],
     }
-
-    return add_indent(retval, indent)
-
-def format_def_elem(node, indent=0):
-    if (str(node) == '0x0'):
-        return '(NIL)'
-
-    retval = 'DefElem [defnamespace=%(defnamespace)s defname=%(defname)s defaction=%(defaction)s]' % {
-        'defnamespace': node['defnamespace'],
-        'defname': node['defname'],
-        'defaction': node['defaction'],
-    }
-
-    retval += format_optional_node_field(node, 'arg')
 
     return add_indent(retval, indent)
 
@@ -455,50 +392,20 @@ def format_node(node, indent=0):
 
         retval = format_pg_part_rule(node)
 
-    elif is_a(node, 'PartitionElem'):
-        node = cast(node, 'PartitionElem')
-
-        retval = format_partition_elem(node)
-
     elif is_a(node, 'IndexElem'):
         node = cast(node, 'IndexElem')
 
         retval = format_index_elem(node)
-
-    elif is_a(node, 'PartitionBoundSpec'):
-        node = cast(node, 'PartitionBoundSpec')
-
-        retval = format_partition_bound_spec(node)
 
     elif is_a(node, 'PartitionValuesSpec'):
         node = cast(node, 'PartitionValuesSpec')
 
         retval = format_partition_values_spec(node)
 
-    elif is_a(node, 'PartitionRangeItem'):
-        node = cast(node, 'PartitionRangeItem')
-
-        retval = format_partition_range_item(node)
-
     elif is_a(node, 'Partition'):
         node = cast(node, 'Partition')
 
         retval = format_partition(node)
-
-    elif is_a(node, 'PartitionBy'):
-        node = cast(node, 'PartitionBy')
-
-        retval = format_partition_by(node)
-
-    elif is_a(node, 'PartitionSpec'):
-        node = cast(node, 'PartitionSpec')
-
-        retval = format_partition_spec(node)
-
-    elif is_a(node, 'DefElem'):
-        node = cast(node, 'DefElem')
-
-        retval = format_def_elem(node)
 
     elif is_a(node, 'String'):
         node = cast(node, 'Value')
@@ -597,36 +504,6 @@ rte:
         format_node_array(info['simple_rte_array'], 1,
                           int(info['simple_rel_array_size']))
     }
-
-    return add_indent(retval, indent)
-
-def format_partition_by(node, indent=0):
-    retval = 'PartitionBy [partType=%(partType)s partDepth=%(partDepth)s bKeepMe=%(bKeepMe)s partQuiet=%(partQuiet)s location=%(location)s]' % {
-        'partType': node['partType'],
-        'partDepth': node['partDepth'],
-        'bKeepMe': (int(node['bKeepMe']) == 1),
-        'partQuiet': node['partQuiet'],
-        'location': node['location'],
-    }
-
-    retval += format_optional_node_field(node, 'keys')
-    retval += format_optional_node_field(node, 'keyopclass')
-    retval += format_optional_node_field(node, 'subPart')
-    retval += format_optional_node_field(node, 'partSpec')
-    retval += format_optional_node_field(node, 'partDefault')
-    retval += format_optional_node_field(node, 'parentRel')
-
-    return add_indent(retval, indent)
-
-def format_partition_spec(node, indent=0):
-    retval = 'PartitionSpec [istemplate=%(istemplate)s location=%(location)s]' % {
-        'istemplate': node['istemplate'],
-        'location': node['location'],
-    }
-
-    retval += format_optional_node_list(node, 'partElem')
-    retval += format_optional_node_list(node, 'enc_clauses', newLine=False)
-    retval += format_optional_node_field(node, 'subSpec')
 
     return add_indent(retval, indent)
 
@@ -919,6 +796,11 @@ FORMATTER_OVERRIDES = {
             'location': {'visibility': "never_show"},
         }
     },
+    'Const': {
+        'fields': {
+            'location': {'visibility': "never_show"},
+        },
+    },
     'Constraint': {
         'fields': {
             'location': {'visibility': "never_show"},
@@ -952,6 +834,11 @@ FORMATTER_OVERRIDES = {
         'fields': {
             'inhRelations': {'formatter': "format_optional_oid_list"},
         }
+    },
+    'DefElem': {
+        'fields': {
+            'defnamespace': {'visibility': "not_null"},
+        },
     },
     'DistinctExpr': {
         'fields': {
@@ -1020,6 +907,22 @@ FORMATTER_OVERRIDES = {
             'location': {'visibility': "never_show"},
         },
     },
+    'PartitionBoundSpec': {
+        'fields': {
+            'everyGenList': {'formatter': 'format_everyGenList_node'},
+            'location': {'visibility': "never_show"},
+        },
+    },
+    'PartitionElem': {
+        'fields': {
+            'location': {'visibility': "never_show"},
+        },
+    },
+    'PartitionSpec': {
+        'fields': {
+            'location': {'visibility': "never_show"},
+        },
+    },
     'Path': {
         'fields':{
             'parent': {'formatter': 'minimal_format_node_field'},
@@ -1079,6 +982,7 @@ FORMATTER_OVERRIDES = {
         'fields': {
             'catalogname': {'visibility': "not_null"},
             'schemaname': {'visibility': "not_null"},
+            'location': {'visibility': "never_show"},
         },
     },
     'TargetEntry': {
@@ -1091,6 +995,13 @@ FORMATTER_OVERRIDES = {
             'resjunk': {'visibility': "not_null"},
         },
     },
+    'TypeName': {
+        'fields': {
+            'typeOid': {'visibility': "not_null"},
+            'typemod': {'visibility': "hide_invalid"},
+            'location': {'visibility': "never_show"},
+        },
+    },
     'Var': {
         'fields':{
             'varno': {'formatter': "format_varno_field"},
@@ -1100,6 +1011,18 @@ FORMATTER_OVERRIDES = {
             'location': {'visibility': "never_show"},
         },
     },
+    # GPDB Specific Partition related nodes
+    'PartitionBy': {
+        'fields': {
+            'location': {'visibility': "never_show"},
+        },
+    },
+    'PartitionRangeItem': {
+        'fields': {
+            'location': {'visibility': "never_show"},
+        },
+    },
+
 }
 
 DEFAULT_DISPLAY_METHODS = {
@@ -1250,6 +1173,48 @@ def format_optional_oid_list(node, fieldname, skip_tag=False, newLine=False, pri
         retval += add_indent("[%s] (NIL)" % fieldname, indent, True)
 
     return retval
+
+def format_everyGenList_node(node, fieldname, skip_tag=False, newLine=False, print_null=False, indent=1):
+    retval = ''
+    if str(node[fieldname]) != '0x0':
+        genlist_strings = []
+        if is_old_style_list(node[fieldname]):
+            item = node[fieldname]['head']
+
+            while str(item) != '0x0':
+
+                listnode = cast(item['data']['ptr_value'], 'List')
+
+                genlist_item = listnode['head']
+                val = '['
+                while str(genlist_item) != '0x0':
+                    genlist_string = getchars(cast(genlist_item['data']['ptr_value'], 'char'))
+                    val += genlist_string
+                    # next item
+                    genlist_item = genlist_item['next']
+                    if str(genlist_item) != "0x0":
+                       val += ' '
+                val += ']'
+
+                genlist_strings.append(val)
+
+                # next item
+                item = item['next']
+        else:
+            raise Exception("Tried to dump everyGenList using new style lists")
+
+        if skip_tag == False:
+            retval += '[%s]' % fieldname
+
+        for item in genlist_strings:
+            retval += add_indent(item, 1, True)
+
+        retval = add_indent(retval, indent, True)
+    elif print_null == True:
+        retval += add_indent("[%s] (NIL)" % fieldname, indent, True)
+
+    return retval
+
 
 def format_gpmon_packet_field(node, fieldname, skip_tag=False, newLine=False, print_null=False, indent=1):
     return "<gpmon_packet>"
