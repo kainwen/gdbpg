@@ -1,6 +1,12 @@
 import gdb
 import string
 
+# Visibility options
+NOT_NULL = "not_null"
+HIDE_INVALID = "hide_invalid"
+NEVER_SHOW = "never_show"
+ALWAYS_SHOW = "always_show"
+
 # TODO: Put these fields in a config file
 PlanNodes = ['Result', 'Repeat', 'ModifyTable','Append', 'Sequence', 'Motion', 
         'AOCSScan', 'BitmapAnd', 'BitmapOr', 'Scan', 'SeqScan', 'DynamicSeqScan',
@@ -18,6 +24,327 @@ PathNodes = ['Path', 'AppendOnlyPath', 'AOCSPath', 'ExternalPath', 'PartitionSel
              'IndexPath', 'BitmapHeapPath', 'BitmapAndPath', 'BitmapOrPath', 'TidPath',
              'CdbMotionPath', 'ForeignPath', 'AppendPath', 'MergeAppendPath', 'ResultPath',
              'HashPath', 'MergePath', 'MaterialPath', 'NestPath', 'JoinPath', 'UniquePath'] 
+
+# TODO: Put these defaults config file
+DEFAULT_DISPLAY_METHODS = {
+    'regular_fields': 'format_regular_field',
+    'node_fields': 'format_optional_node_field',
+    'list_fields': 'format_optional_node_list',
+    'tree_fields': 'format_optional_node_field',
+    'datatype_methods': {
+            'char *': 'format_string_pointer_field',
+            'const char *': 'format_string_pointer_field',
+            'Bitmapset *': 'format_bitmapset_field',
+            'struct gpmon_packet_t': 'format_gpmon_packet_field',
+            'struct timeval': 'format_timeval_field',
+    },
+    'show_hidden': False,
+    'max_recursion_depth': 30
+}
+
+# TODO: generate these overrides in a yaml config file
+FORMATTER_OVERRIDES = {
+    'CaseWhen': {
+        'fields':{
+            'location': {'visibility': "never_show"},
+        },
+    },
+    'ColumnDef': {
+        'fields': {
+            'identity': {
+                'visibility': "not_null",
+                'formatter': 'format_generated_when',
+            },
+            'generated': {
+                'visibility': "not_null",
+                'formatter': 'format_generated_when',
+            },
+            'collOid': {'visibility': "not_null"},
+            'location': {'visibility': "never_show"},
+        }
+    },
+    'Const': {
+        'fields': {
+            'consttypmod': {'visibility': "hide_invalid"},
+            'constcollid': {'visibility': "not_null"},
+            'location': {'visibility': "never_show"},
+        },
+    },
+    'Constraint': {
+        'fields': {
+            'location': {'visibility': "never_show"},
+            'conname': {'visibility': "not_null"},
+            'cooked_expr': {'visibility': "not_null"},
+            'generated_when': {
+                'visibility': "not_null",
+                'formatter': 'format_generated_when',
+            },
+            'indexname': {'visibility': "not_null"},
+            'indexspace': {'visibility': "not_null"},
+            'access_method': {'visibility': "not_null"},
+            'fk_matchtype': {
+                'visibility': "not_null",
+                'formatter': 'format_foreign_key_matchtype',
+            },
+            'fk_upd_action': {
+                'visibility': "not_null",
+                'formatter': 'format_foreign_key_actions',
+            },
+            'fk_del_action': {
+                'visibility': "not_null",
+                'formatter': 'format_foreign_key_actions',
+            },
+            'old_pktable_oid': {'visibility': "not_null"},
+            'trig1Oid': {'visibility': "not_null"},
+            'trig2Oid': {'visibility': "not_null"},
+            'trig3Oid': {'visibility': "not_null"},
+            'trig4Oid': {'visibility': "not_null"},
+        },
+        'datatype_methods': {
+         }
+    },
+    'CreateStmt': {
+        'fields': {
+            'inhRelations': {'formatter': "format_optional_oid_list"},
+        }
+    },
+    'DefElem': {
+        'fields': {
+            'defnamespace': {'visibility': "not_null"},
+        },
+    },
+    'DistinctExpr': {
+        'fields': {
+            'args': {'skip_tag': True},
+            'opcollid': {'visibility': "not_null"},
+            'inputcollid': {'visibility': "not_null"},
+        },
+    },
+    'EquivalenceClass': {
+        'fields': {
+            # TODO: These fields are nice to dump recursively, but 
+            # they potentially have backwards references to their parents.
+            # Need a way to detect this condition and stop dumping
+            'ec_sources': {'formatter': 'minimal_format_node_field', },
+            'ec_derives': {'formatter': 'minimal_format_node_field', },
+        },
+    },
+    'EState': {
+        'fields':{
+            'es_plannedstmt': {'visibility': "never_show"},
+            # TODO: These fields crash gdbpg.py
+            'es_sharenode': {'visibility': "never_show"},
+        },
+    },
+    'ExprContext': {
+        'fields':{
+            'ecxt_estate': {'visibility': "never_show"},
+        },
+    },
+    'IndexOptInfo': {
+        'fields': {
+            'rel': {'formatter': 'minimal_format_node_field', }
+        },
+    },
+    'FuncExprState': {
+        'fields':{
+            # TODO: These fields crash gdbpg.py
+            'fp_arg': {'visibility': "never_show"},
+            'fp_datum': {'visibility': "never_show"},
+            'fp_null': {'visibility': "never_show"},
+        },
+    },
+    # TODO: It would be nice to be able to recurse into memory contexts and
+    #       print the tree, but need to make its own NodeFormatter in order
+    #       to make its output look like a tree
+    'MemoryContextData': {
+        'fields':{
+            'methods': {'visibility': "never_show"},
+            'parent': {'formatter': "minimal_format_memory_context_data_field"},
+            'prevchild': {'formatter': "minimal_format_memory_context_data_field"},
+            'firstchild': {'formatter': "minimal_format_memory_context_data_field"},
+            'nextchild': {'formatter': "minimal_format_memory_context_data_field"},
+        },
+    },
+    'NullIfExpr': {
+        'fields': {
+            'args': {'skip_tag': True},
+            'opcollid': {'visibility': "not_null"},
+            'inputcollid': {'visibility': "not_null"},
+        },
+    },
+    'OpExpr': {
+        'fields':{
+            'args': {'skip_tag': True},
+            'opcollid': {'visibility': "not_null"},
+            'inputcollid': {'visibility': "not_null"},
+        },
+    },
+    'Param': {
+        'fields':{
+            'paramtypmod': {'visibility': "hide_invalid"},
+            'paramcollid': {'visibility': "not_null"},
+            'location': {'visibility': "never_show"},
+        },
+    },
+    'PartitionBoundSpec': {
+        'fields': {
+            'everyGenList': {'formatter': 'format_everyGenList_node'},
+            'location': {'visibility': "never_show"},
+        },
+    },
+    'PartitionElem': {
+        'fields': {
+            'location': {'visibility': "never_show"},
+        },
+    },
+    'PartitionSpec': {
+        'fields': {
+            'location': {'visibility': "never_show"},
+        },
+    },
+    'Path': {
+        'fields':{
+            'parent': {'formatter': 'minimal_format_node_field'},
+        },
+    },
+    'PlannerGlobal': {
+        'fields':{
+            'subroots': {'formatter': 'debug_minimal_format_node_list'},
+        },
+    },
+    'PlannerInfo': {
+        'fields':{
+            'parent_root': {'formatter': 'minimal_format_node_field'},
+            'subroots': {'formatter': 'debug_minimal_format_node_list'},
+            # TODO: Broken. Need to make dumping these fields possible
+            'simple_rel_array': {'visibility': 'never_show'},
+            'simple_rte_array': {'visibility': 'never_show'},
+            'upper_rels': {'formatter': 'minimal_format_node_field'},
+            'upper_targets': {'formatter': 'minimal_format_node_field'},
+        },
+    },
+    'PlanState': {
+        'fields': {
+            'lefttree': {
+                  'field_type': 'tree_field',
+                  'visibility': 'not_null',
+                  'skip_tag': True
+                },
+            'righttree': {
+                  'field_type': 'tree_field',
+                  'visibility': 'not_null',
+                  'skip_tag': True
+                },
+            'plan': { 'formatter': 'minimal_format_node_field', },
+        },
+    },
+    'RangeTblEntry': {
+        'fields': {
+            'relid': {'visibility': "not_null"},
+            'relkind': {'visibility': "not_null"},
+            'rellockmode': {'visibility': "not_null"},
+            'tablesample': {'visibility': "not_null"},
+            'subquery': {'visibility': "not_null"},
+            'security_barrier': {'visibility': "not_null"},
+            'tablefunc': {'visibility': "not_null"},
+            'ctename': {'visibility': "not_null"},
+            'tcelevelsup': {'visibility': "not_null"},
+            'enrname': {'visibility': "not_null"},
+            'enrtuples': {'visibility': "not_null"},
+            'inh': {'visibility': "not_null"},
+            'requiredPerms': {'visibility': "not_null"},
+            'checkAsUser': {'visibility': "not_null"},
+            'selectedCols': {'visibility': "not_null"},
+            'insertedCols': {'visibility': "not_null"},
+            'updatedCols': {'visibility': "not_null"},
+            'extraUpdatedCols': {'visibility': "not_null"},
+            'eref': {'visibility': "never_show"},
+        },
+    },
+    'RangeVar': {
+        'fields': {
+            'catalogname': {'visibility': "not_null"},
+            'schemaname': {'visibility': "not_null"},
+            'location': {'visibility': "never_show"},
+        },
+    },
+    'RestrictInfo': {
+        'fields': {
+            'parent_ec': {'formatter': 'minimal_format_node_field', },
+            'scansel_cache': {'formatter': 'minimal_format_node_field', }
+        },
+    },
+    'TargetEntry': {
+        'fields':{
+            'expr': {'skip_tag': True},
+            'resname': {'visibility': "not_null"},
+            'ressortgroupref': {'visibility': "not_null"},
+            'resorigtbl': {'visibility': "not_null"},
+            'resorigcol': {'visibility': "not_null"},
+            'resjunk': {'visibility': "not_null"},
+        },
+    },
+    'TypeName': {
+        'fields': {
+            'typeOid': {'visibility': "not_null"},
+            'typemod': {'visibility': "hide_invalid"},
+            'location': {'visibility': "never_show"},
+        },
+    },
+    'Var': {
+        'fields':{
+            'varno': {'formatter': "format_varno_field"},
+            'vartypmod': {'visibility': "hide_invalid"},
+            'varcollid': {'visibility': "not_null"},
+            'varlevelsup': {'visibility': "not_null"},
+            'varoattno': {'visibility': "hide_invalid"},
+            'location': {'visibility': "never_show"},
+        },
+    },
+    # Plan Nodes
+    'Plan': {
+        'fields': {
+            'extParam': {'visibility': "not_null"},
+            'allParam': {'visibility': "not_null"},
+            'operatorMemKB': {'visibility': "not_null"},
+            'lefttree': {
+                  'field_type': 'tree_field',
+                  'visibility': 'not_null',
+                },
+            'righttree': {
+                  'field_type': 'tree_field',
+                  'visibility': 'not_null',
+                },
+        },
+    },
+
+    # GPDB Specific Plan nodes
+    'Motion': {
+        'fields': {
+            'hashFuncs': {'visibility': "not_null"},
+            'segidColIdx': {'visibility': "not_null"},
+            'numSortCols': {'visibility': "not_null"},
+            'sortColIdx': {'visibility': "not_null"},
+            'sortOperators': {'visibility': "not_null"},
+            'nullsFirst': {'visibility': "not_null"},
+            'senderSliceInfo': {'visibility': "not_null"},
+        },
+    },
+    # GPDB Specific Partition related nodes
+    'PartitionBy': {
+        'fields': {
+            'location': {'visibility': "never_show"},
+        },
+    },
+    'PartitionRangeItem': {
+        'fields': {
+            'location': {'visibility': "never_show"},
+        },
+    },
+
+}
+
 
 StateNodes = []
 for node in PlanNodes:
@@ -742,332 +1069,6 @@ def get_list_fields(node):
             if is_type(v, field, is_pointer):
                 fields.append(v.name)
     return fields
-
-# Visibility options
-NOT_NULL = "not_null"
-HIDE_INVALID = "hide_invalid"
-NEVER_SHOW = "never_show"
-ALWAYS_SHOW = "always_show"
-
-# TODO: generate these overrides in a yaml config file
-FORMATTER_OVERRIDES = {
-    'CaseWhen': {
-        'fields':{
-            'location': {'visibility': "never_show"},
-        },
-    },
-    'ColumnDef': {
-        'fields': {
-            'identity': {
-                'visibility': "not_null",
-                'formatter': 'format_generated_when',
-            },
-            'generated': {
-                'visibility': "not_null",
-                'formatter': 'format_generated_when',
-            },
-            'collOid': {'visibility': "not_null"},
-            'location': {'visibility': "never_show"},
-        }
-    },
-    'Const': {
-        'fields': {
-            'consttypmod': {'visibility': "hide_invalid"},
-            'constcollid': {'visibility': "not_null"},
-            'location': {'visibility': "never_show"},
-        },
-    },
-    'Constraint': {
-        'fields': {
-            'location': {'visibility': "never_show"},
-            'conname': {'visibility': "not_null"},
-            'cooked_expr': {'visibility': "not_null"},
-            'generated_when': {
-                'visibility': "not_null",
-                'formatter': 'format_generated_when',
-            },
-            'indexname': {'visibility': "not_null"},
-            'indexspace': {'visibility': "not_null"},
-            'access_method': {'visibility': "not_null"},
-            'fk_matchtype': {
-                'visibility': "not_null",
-                'formatter': 'format_foreign_key_matchtype',
-            },
-            'fk_upd_action': {
-                'visibility': "not_null",
-                'formatter': 'format_foreign_key_actions',
-            },
-            'fk_del_action': {
-                'visibility': "not_null",
-                'formatter': 'format_foreign_key_actions',
-            },
-            'old_pktable_oid': {'visibility': "not_null"},
-            'trig1Oid': {'visibility': "not_null"},
-            'trig2Oid': {'visibility': "not_null"},
-            'trig3Oid': {'visibility': "not_null"},
-            'trig4Oid': {'visibility': "not_null"},
-        },
-        'datatype_methods': {
-         }
-    },
-    'CreateStmt': {
-        'fields': {
-            'inhRelations': {'formatter': "format_optional_oid_list"},
-        }
-    },
-    'DefElem': {
-        'fields': {
-            'defnamespace': {'visibility': "not_null"},
-        },
-    },
-    'DistinctExpr': {
-        'fields': {
-            'args': {'skip_tag': True},
-            'opcollid': {'visibility': "not_null"},
-            'inputcollid': {'visibility': "not_null"},
-        },
-    },
-    'EquivalenceClass': {
-        'fields': {
-            # TODO: These fields are nice to dump recursively, but 
-            # they potentially have backwards references to their parents.
-            # Need a way to detect this condition and stop dumping
-            'ec_sources': {'formatter': 'minimal_format_node_field', },
-            'ec_derives': {'formatter': 'minimal_format_node_field', },
-        },
-    },
-    'EState': {
-        'fields':{
-            'es_plannedstmt': {'visibility': "never_show"},
-            # TODO: These fields crash gdbpg.py
-            'es_sharenode': {'visibility': "never_show"},
-        },
-    },
-    'ExprContext': {
-        'fields':{
-            'ecxt_estate': {'visibility': "never_show"},
-        },
-    },
-    'IndexOptInfo': {
-        'fields': {
-            'rel': {'formatter': 'minimal_format_node_field', }
-        },
-    },
-    'FuncExprState': {
-        'fields':{
-            # TODO: These fields crash gdbpg.py
-            'fp_arg': {'visibility': "never_show"},
-            'fp_datum': {'visibility': "never_show"},
-            'fp_null': {'visibility': "never_show"},
-        },
-    },
-    # TODO: It would be nice to be able to recurse into memory contexts and
-    #       print the tree, but need to make its own NodeFormatter in order
-    #       to make its output look like a tree
-    'MemoryContextData': {
-        'fields':{
-            'methods': {'visibility': "never_show"},
-            'parent': {'formatter': "minimal_format_memory_context_data_field"},
-            'prevchild': {'formatter': "minimal_format_memory_context_data_field"},
-            'firstchild': {'formatter': "minimal_format_memory_context_data_field"},
-            'nextchild': {'formatter': "minimal_format_memory_context_data_field"},
-        },
-    },
-    'NullIfExpr': {
-        'fields': {
-            'args': {'skip_tag': True},
-            'opcollid': {'visibility': "not_null"},
-            'inputcollid': {'visibility': "not_null"},
-        },
-    },
-    'OpExpr': {
-        'fields':{
-            'args': {'skip_tag': True},
-            'opcollid': {'visibility': "not_null"},
-            'inputcollid': {'visibility': "not_null"},
-        },
-    },
-    'Param': {
-        'fields':{
-            'paramtypmod': {'visibility': "hide_invalid"},
-            'paramcollid': {'visibility': "not_null"},
-            'location': {'visibility': "never_show"},
-        },
-    },
-    'PartitionBoundSpec': {
-        'fields': {
-            'everyGenList': {'formatter': 'format_everyGenList_node'},
-            'location': {'visibility': "never_show"},
-        },
-    },
-    'PartitionElem': {
-        'fields': {
-            'location': {'visibility': "never_show"},
-        },
-    },
-    'PartitionSpec': {
-        'fields': {
-            'location': {'visibility': "never_show"},
-        },
-    },
-    'Path': {
-        'fields':{
-            'parent': {'formatter': 'minimal_format_node_field'},
-        },
-    },
-    'PlannerGlobal': {
-        'fields':{
-            'subroots': {'formatter': 'debug_minimal_format_node_list'},
-        },
-    },
-    'PlannerInfo': {
-        'fields':{
-            'parent_root': {'formatter': 'minimal_format_node_field'},
-            'subroots': {'formatter': 'debug_minimal_format_node_list'},
-            # TODO: Broken. Need to make dumping these fields possible
-            'simple_rel_array': {'visibility': 'never_show'},
-            'simple_rte_array': {'visibility': 'never_show'},
-            'upper_rels': {'formatter': 'minimal_format_node_field'},
-            'upper_targets': {'formatter': 'minimal_format_node_field'},
-        },
-    },
-    'PlanState': {
-        'fields': {
-            'lefttree': {
-                  'field_type': 'tree_field',
-                  'visibility': 'not_null',
-                  'skip_tag': True
-                },
-            'righttree': {
-                  'field_type': 'tree_field',
-                  'visibility': 'not_null',
-                  'skip_tag': True
-                },
-            'plan': { 'formatter': 'minimal_format_node_field', },
-        },
-    },
-    'RangeTblEntry': {
-        'fields': {
-            'relid': {'visibility': "not_null"},
-            'relkind': {'visibility': "not_null"},
-            'rellockmode': {'visibility': "not_null"},
-            'tablesample': {'visibility': "not_null"},
-            'subquery': {'visibility': "not_null"},
-            'security_barrier': {'visibility': "not_null"},
-            'tablefunc': {'visibility': "not_null"},
-            'ctename': {'visibility': "not_null"},
-            'tcelevelsup': {'visibility': "not_null"},
-            'enrname': {'visibility': "not_null"},
-            'enrtuples': {'visibility': "not_null"},
-            'inh': {'visibility': "not_null"},
-            'requiredPerms': {'visibility': "not_null"},
-            'checkAsUser': {'visibility': "not_null"},
-            'selectedCols': {'visibility': "not_null"},
-            'insertedCols': {'visibility': "not_null"},
-            'updatedCols': {'visibility': "not_null"},
-            'extraUpdatedCols': {'visibility': "not_null"},
-            'eref': {'visibility': "never_show"},
-        },
-    },
-    'RangeVar': {
-        'fields': {
-            'catalogname': {'visibility': "not_null"},
-            'schemaname': {'visibility': "not_null"},
-            'location': {'visibility': "never_show"},
-        },
-    },
-    'RestrictInfo': {
-        'fields': {
-            'parent_ec': {'formatter': 'minimal_format_node_field', },
-            'scansel_cache': {'formatter': 'minimal_format_node_field', }
-        },
-    },
-    'TargetEntry': {
-        'fields':{
-            'expr': {'skip_tag': True},
-            'resname': {'visibility': "not_null"},
-            'ressortgroupref': {'visibility': "not_null"},
-            'resorigtbl': {'visibility': "not_null"},
-            'resorigcol': {'visibility': "not_null"},
-            'resjunk': {'visibility': "not_null"},
-        },
-    },
-    'TypeName': {
-        'fields': {
-            'typeOid': {'visibility': "not_null"},
-            'typemod': {'visibility': "hide_invalid"},
-            'location': {'visibility': "never_show"},
-        },
-    },
-    'Var': {
-        'fields':{
-            'varno': {'formatter': "format_varno_field"},
-            'vartypmod': {'visibility': "hide_invalid"},
-            'varcollid': {'visibility': "not_null"},
-            'varlevelsup': {'visibility': "not_null"},
-            'varoattno': {'visibility': "hide_invalid"},
-            'location': {'visibility': "never_show"},
-        },
-    },
-    # Plan Nodes
-    'Plan': {
-        'fields': {
-            'extParam': {'visibility': "not_null"},
-            'allParam': {'visibility': "not_null"},
-            'operatorMemKB': {'visibility': "not_null"},
-            'lefttree': {
-                  'field_type': 'tree_field',
-                  'visibility': 'not_null',
-                },
-            'righttree': {
-                  'field_type': 'tree_field',
-                  'visibility': 'not_null',
-                },
-        },
-    },
-
-    # GPDB Specific Plan nodes
-    'Motion': {
-        'fields': {
-            'hashFuncs': {'visibility': "not_null"},
-            'segidColIdx': {'visibility': "not_null"},
-            'numSortCols': {'visibility': "not_null"},
-            'sortColIdx': {'visibility': "not_null"},
-            'sortOperators': {'visibility': "not_null"},
-            'nullsFirst': {'visibility': "not_null"},
-            'senderSliceInfo': {'visibility': "not_null"},
-        },
-    },
-    # GPDB Specific Partition related nodes
-    'PartitionBy': {
-        'fields': {
-            'location': {'visibility': "never_show"},
-        },
-    },
-    'PartitionRangeItem': {
-        'fields': {
-            'location': {'visibility': "never_show"},
-        },
-    },
-
-}
-
-DEFAULT_DISPLAY_METHODS = {
-    'regular_fields': 'format_regular_field',
-    'node_fields': 'format_optional_node_field',
-    'list_fields': 'format_optional_node_list',
-    'tree_fields': 'format_optional_node_field',
-    'datatype_methods': {
-            'char *': 'format_string_pointer_field',
-            'const char *': 'format_string_pointer_field',
-            'Bitmapset *': 'format_bitmapset_field',
-            'struct gpmon_packet_t': 'format_gpmon_packet_field',
-            'struct timeval': 'format_timeval_field',
-    },
-    'show_hidden': False,
-    'max_recursion_depth': 30
-}
-
 def format_regular_field(node, field):
     return node[field]
 
