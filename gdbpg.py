@@ -344,9 +344,6 @@ def format_node(node, indent=0):
 
         retval = format_generic_expr_state(node)
 
-    elif is_a(node, 'PlannerInfo'):
-        retval = format_planner_info(node)
-
     elif is_a(node, 'List'):
         node = cast(node, 'List')
 
@@ -483,29 +480,6 @@ def is_joinnode(node):
             return True
 
     return False
-
-def format_planner_info(info, indent=0):
-
-    # Query *parse;			/* the Query being planned */
-    # *glob;				/* global info for current planner run */
-    # Index	query_level;	/* 1 at the outermost Query */
-    # struct PlannerInfo *parent_root;	/* NULL at outermost Query */
-    # List	   *plan_params;	/* list of PlannerParamItems, see below */
-
-    retval = '''rel:
-%(rel)s
-rte:
-%(rte)s
-''' % {
-        'rel':
-        format_node_array(info['simple_rel_array'], 1,
-                          int(info['simple_rel_array_size'])),
-        'rte':
-        format_node_array(info['simple_rte_array'], 1,
-                          int(info['simple_rel_array_size']))
-    }
-
-    return add_indent(retval, indent)
 
 def format_generic_expr_state(node, indent=0):
     exprstate = node['xprstate']
@@ -855,7 +829,11 @@ FORMATTER_OVERRIDES = {
     },
     'EquivalenceClass': {
         'fields': {
-            'ec_sources': {'formatter': 'minimal_format_node_field', }
+            # TODO: These fields are nice to dump recursively, but 
+            # they potentially have backwards references to their parents.
+            # Need a way to detect this condition and stop dumping
+            'ec_sources': {'formatter': 'minimal_format_node_field', },
+            'ec_derives': {'formatter': 'minimal_format_node_field', },
         },
     },
     'EState': {
@@ -883,6 +861,9 @@ FORMATTER_OVERRIDES = {
             'fp_null': {'visibility': "never_show"},
         },
     },
+    # TODO: It would be nice to be able to recurse into memory contexts and
+    #       print the tree, but need to make its own NodeFormatter in order
+    #       to make its output look like a tree
     'MemoryContextData': {
         'fields':{
             'methods': {'visibility': "never_show"},
@@ -934,6 +915,22 @@ FORMATTER_OVERRIDES = {
             'parent': {'formatter': 'minimal_format_node_field'},
         },
     },
+    'PlannerGlobal': {
+        'fields':{
+            'subroots': {'formatter': 'debug_minimal_format_node_list'},
+        },
+    },
+    'PlannerInfo': {
+        'fields':{
+            'parent_root': {'formatter': 'minimal_format_node_field'},
+            'subroots': {'formatter': 'debug_minimal_format_node_list'},
+            # TODO: Broken. Need to make dumping these fields possible
+            'simple_rel_array': {'visibility': 'never_show'},
+            'simple_rte_array': {'visibility': 'never_show'},
+            'upper_rels': {'formatter': 'minimal_format_node_field'},
+            'upper_targets': {'formatter': 'minimal_format_node_field'},
+        },
+    },
     'PlanState': {
         'fields': {
             'lefttree': {
@@ -977,6 +974,12 @@ FORMATTER_OVERRIDES = {
             'catalogname': {'visibility': "not_null"},
             'schemaname': {'visibility': "not_null"},
             'location': {'visibility': "never_show"},
+        },
+    },
+    'RestrictInfo': {
+        'fields': {
+            'parent_ec': {'formatter': 'minimal_format_node_field', },
+            'scansel_cache': {'formatter': 'minimal_format_node_field', }
         },
     },
     'TargetEntry': {
@@ -1252,6 +1255,68 @@ def minimal_format_node_field(node, fieldname, cast_to=None, skip_tag=False, pri
 
     return retval
 
+def minimal_format_node_list(node, fieldname, cast_to=None, skip_tag=False, newLine=True, print_null=False, indent=1):
+    retval = ''
+    indent_add = 0
+    if str(node[fieldname]) != '0x0':
+        if skip_tag == False:
+            retval += add_indent('[%s]' % fieldname, indent, True)
+            indent_add = 1
+
+        if newLine == True:
+            retval += '\n'
+            retval += '%s' % minimal_format_node_list_field(node, fieldname, cast_to, skip_tag, newLine, print_null, indent + indent_add)
+        else:
+            retval += ' %s' % minimal_format_node_list_field(node, fieldname, cast_to, skip_tag, newLine, print_null, 0)
+    elif print_null == True:
+        return add_indent("[%s] (NIL)" % fieldname, indent, True)
+
+    return retval
+
+def minimal_format_node_list_field(node, fieldname, cast_to=None, skip_tag=False, newLine=True, print_null=False, indent=1):
+    'minimal format list containing Node values'
+    if cast_to != None:
+        lst = cast(node[fieldname], cast_to)
+    else:
+        lst = node[fieldname]
+
+    # we'll collect the formatted items into a Python list
+    tlist = []
+
+    if is_old_style_list(lst):
+        item = lst['head']
+
+        # walk the list until we reach the last item
+        while str(item) != '0x0':
+            lstnode = cast(item['data']['ptr_value'], 'Node')
+            nodetype = get_base_node_type(lstnode)
+            lstnode = cast(lstnode, nodetype)
+
+            val = "(%s)%s" % (lstnode.type, node[fieldname])
+            # append the formatted Node to the result list
+            tlist.append(val)
+
+            # next item
+            item = item['next']
+    else:
+        for col in range(0, lst['length']):
+            element = lst['elements'][col]
+            lstnode = cast(item['data']['ptr_value'], 'Node')
+            nodetype = get_base_node_type(lstnode)
+            lstnode = cast(lstnode, nodetype)
+
+            val = "(%s)%s" % (lstnode.type, node[fieldname])
+
+            tlist.append(val)
+
+    if newLine:
+        retval = "\n".join([str(t) for t in tlist])
+    else:
+        retval = str(tlist)
+
+    return add_indent(retval, indent)
+
+
 def minimal_format_memory_context_data_field(node, fieldname, cast_to=None, skip_tag=False, print_null=False, indent=1):
     retval = ''
     if str(node[fieldname]) != '0x0':
@@ -1282,9 +1347,11 @@ def debug_format_varno_field(node, field):
     return format_varno_field(node, field)
 
 def debug_format_optional_node_field(node, fieldname, cast_to=None, skip_tag=False, print_null=False, indent=1):
-    print("debug_format_optional_node_field: %s[%s]: %s, cast_to=%s skip_tag=%s print_null=%s, indent=%s" % (get_base_node_type(node), fieldname,
-        format_optional_node_field(node, fieldname, cast_to, skip_tag, True, indent), cast_to, skip_tag, print_null, indent))
-    return format_optional_node_field(node, fieldname, cast_to, skip_tag, print_null, indent)
+    print("debug_format_optional_node_field: %s[%s]: cast_to=%s skip_tag=%s print_null=%s, indent=%s" % (get_base_node_type(node), fieldname,
+        cast_to, skip_tag, print_null, indent))
+    ret = format_optional_node_field(node, fieldname, cast_to, skip_tag, True, indent)
+    print(ret)
+    return ret
 
 def debug_format_optional_node_list(node, fieldname, cast_to=None, skip_tag=False, newLine=True, print_null=False, indent=1):
     print("debug_format_optional_node_list: %s[%s]: %s" % (get_base_node_type(node), fieldname,
@@ -1295,6 +1362,13 @@ def debug_format_optional_oid_list(node, fieldname, skip_tag=False, newLine=Fals
     print("debug_format_optional_oid_list: %s[%s]: %s" % (get_base_node_type(node), fieldname,
         format_optional_oid_list(node, fieldname, skip_tag, newLine, print_null, indent)))
     return format_optional_oid_list(node, fieldname, newLine, skip_tag, print_null, indent)
+
+def debug_minimal_format_node_list(node, fieldname, cast_to=None, skip_tag=False, print_null=False, indent=1):
+    print("debug_minimal_format_node_list: %s[%s]: cast_to=%s skip_tag=%s print_null=%s, indent=%s" % (get_base_node_type(node), fieldname,
+        cast_to, skip_tag, print_null, indent))
+    ret = minimal_format_node_list(node, fieldname, cast_to, skip_tag, True, indent)
+    print(ret)
+    return ret
 
 
 class NodeFormatter(object):
@@ -1562,6 +1636,9 @@ class NodeFormatter(object):
         return self._regular_fields
 
     # TODO: should this be a class method?
+    # TODO: This is definitely broken, as lookup_type behaves differently
+    #       for different versions of gdb. Need to figure out a portable
+    #       way to do this
     def is_type(self, value, type_name, is_pointer):
         t = gdb.lookup_type(type_name)
         if(is_pointer):
