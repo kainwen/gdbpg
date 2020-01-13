@@ -35,7 +35,6 @@ DEFAULT_DISPLAY_METHODS = {
             'char *': 'format_string_pointer_field',
             'const char *': 'format_string_pointer_field',
             'Bitmapset *': 'format_bitmapset_field',
-            'struct gpmon_packet_t': 'format_gpmon_packet_field',
             'struct timeval': 'format_timeval_field',
     },
     'show_hidden': False,
@@ -374,6 +373,8 @@ FORMATTER_OVERRIDES = {
                   'field_type': 'tree_field',
                   'visibility': 'not_null',
                 },
+            # GPDB Only:
+            'gpmon_pkt': {'visibility': "never_show"},
         },
     },
 
@@ -1007,10 +1008,6 @@ def format_everyGenList_node(node, fieldname, skip_tag=False, newLine=False, pri
         retval += add_indent("[%s] (NIL)" % fieldname, indent, True)
 
     return retval
-
-
-def format_gpmon_packet_field(node, fieldname, skip_tag=False, newLine=False, print_null=False, indent=1):
-    return "<gpmon_packet>"
 
 def minimal_format_node_field(node, fieldname, cast_to=None, skip_tag=False, print_null=False, indent=1):
     retval = ''
