@@ -34,7 +34,6 @@ DEFAULT_DISPLAY_METHODS = {
     'datatype_methods': {
             'char *': 'format_string_pointer_field',
             'const char *': 'format_string_pointer_field',
-            'char': 'format_char_field',
             'Bitmapset *': 'format_bitmapset_field',
             'struct gpmon_packet_t': 'format_gpmon_packet_field',
             'struct timeval': 'format_timeval_field',
@@ -843,8 +842,7 @@ def format_string_pointer_field(node, field):
     return getchars(node[field])
 
 def format_char_field(node, field):
-    char = format_char(node[field])
-    return char
+    return "'%s'" % format_char(node[field])
 
 def format_bitmapset_field(node, field):
     return format_bitmapset(node[field])
