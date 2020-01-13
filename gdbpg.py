@@ -374,6 +374,7 @@ FORMATTER_OVERRIDES = {
                   'visibility': 'not_null',
                 },
             # GPDB Only:
+            'motionNode': {'formatter': "minimal_format_node_field"},
             'gpmon_pkt': {'visibility': "never_show"},
         },
     },
