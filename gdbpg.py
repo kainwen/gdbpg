@@ -45,6 +45,11 @@ DEFAULT_DISPLAY_METHODS = {
 
 # TODO: generate these overrides in a yaml config file
 FORMATTER_OVERRIDES = {
+    'A_Expr': {
+        'fields':{
+            'location': {'visibility': "never_show"},
+        },
+    },
     'Aggref': {
         'fields':{
             'aggcollid': {'visibility': "not_null"},
@@ -137,7 +142,7 @@ FORMATTER_OVERRIDES = {
     },
     'EquivalenceClass': {
         'fields': {
-            # TODO: These fields are nice to dump recursively, but 
+            # TODO: These fields are nice to dump recursively, but
             # they potentially have backwards references to their parents.
             # Need a way to detect this condition and stop dumping
             'ec_sources': {'formatter': 'minimal_format_node_field', },
@@ -409,33 +414,6 @@ JoinNodes = ['NestLoop', 'MergeJoin', 'HashJoin', 'Join', 'NestLoopState',
 
 recursion_depth = 0
 
-def format_appendplan_list(lst, indent):
-    retval = format_node_list(lst, indent, True)
-    return add_indent(retval, indent + 1)
-
-def format_alter_partition_cmd(node, indent=0):
-    if (str(node) == '0x0'):
-        return '(NIL)'
-
-    retval = 'AlterPartitionCmd (location=%(location)s)' % {
-        'location': node['location']
-    }
-
-    retval += format_optional_node_field(node, 'partid')
-    retval += format_optional_node_field(node, 'arg1')
-    retval += format_optional_node_field(node, 'arg2')
-
-    return add_indent(retval, indent)
-
-def format_partition_cmd(node, indent=0):
-    retval = 'PartitionCmd' % {
-    }
-
-    retval += format_optional_node_field(node, 'name')
-    retval += format_optional_node_field(node, 'bound')
-
-    return add_indent(retval, indent)
-
 def format_alter_partition_id(node, indent=0):
     if (str(node) == '0x0'):
         return '(NIL)'
@@ -454,66 +432,6 @@ def format_alter_partition_id(node, indent=0):
             partdef = '\n[partiddef]'
             partdef += add_indent('String: %s' % node['partiddef'], 1)
             retval += add_indent(partdef, 1)
-
-    return add_indent(retval, indent)
-
-def format_pg_part_rule(node, indent=0):
-    if (str(node) == '0x0'):
-        return '(NIL)'
-
-    retval = 'PgPartRule (partIdStr=%(partIdStr)s isName=%(isName)s topRuleRank=%(topRuleRank)s relname=%(relname)s)' % {
-        'partIdStr': node['partIdStr'],
-        'isName': (int(node['isName']) == 1),
-        'topRuleRank': node['topRuleRank'],
-        'relname': node['relname']
-    }
-
-    retval += format_optional_node_field(node, 'pNode')
-    retval += format_optional_node_field(node, 'topRule')
-
-    return add_indent(retval, indent)
-
-def format_index_elem(node, indent=0):
-    if (str(node) == '0x0'):
-        return '(NIL)'
-
-    retval = 'IndexElem [name=%(name)s indexcolname=%(indexcolname)s ordering=%(ordering)s nulls_ordering=%(nulls_ordering)s]' % {
-        'name': getchars(node['name']),
-        'indexcolname': getchars(node['indexcolname']),
-        'ordering': node['ordering'],
-        'nulls_ordering': node['nulls_ordering'],
-    }
-
-    retval += format_optional_node_field(node, 'expr')
-    retval += format_optional_node_list(node, 'collation')
-    retval += format_optional_node_field(node, 'opclass')
-
-    return add_indent(retval, indent)
-
-
-def format_partition_values_spec(node, indent=0):
-    retval = 'PartitionValuesSpec [location=%(location)s]' % {
-        'location': node['location'],
-    }
-
-    retval += format_optional_node_list(node, 'partValues')
-
-    return add_indent(retval, indent)
-
-def format_partition(node, indent=0):
-    if (str(node) == '0x0'):
-        return '(NIL)'
-
-    retval = 'Partition [partid=%(partid)s parrelid=%(parrelid)s parkind=%(parkind)s parlevel=%(parlevel)s paristemplate=%(paristemplate)s parnatts=%(parnatts)s paratts=%(paratts)s parclass=%(parclass)s]' % {
-        'partid': node['partid'],
-        'parrelid': node['parrelid'],
-        'parkind': node['parkind'],
-        'parlevel': node['parlevel'],
-        'paristemplate': (int(node['paristemplate']) == 1),
-        'parnatts': node['parnatts'],
-        'paratts': node['paratts'],
-        'parclass': node['parclass']
-    }
 
     return add_indent(retval, indent)
 
@@ -690,25 +608,10 @@ def format_node(node, indent=0):
 
         retval = format_table_like_clause(node)
 
-    elif is_a(node, 'A_Expr'):
-        node = cast(node, 'A_Expr')
-
-        retval = format_a_expr(node)
-
     elif is_a(node, 'A_Const'):
         node = cast(node, 'A_Const')
 
         retval = format_a_const(node)
-
-    elif is_a(node, 'CoalesceExpr'):
-        node = cast(node, 'CoalesceExpr')
-
-        retval = format_coalesce_expr(node)
-
-    elif is_a(node, 'GenericExprState'):
-        node = cast(node, 'GenericExprState')
-
-        retval = format_generic_expr_state(node)
 
     elif is_a(node, 'List'):
         node = cast(node, 'List')
@@ -720,40 +623,10 @@ def format_node(node, indent=0):
 
         retval = format_scalar_array_op_expr(node)
 
-    elif is_a(node, 'AlterPartitionCmd'):
-        node = cast(node, 'AlterPartitionCmd')
-
-        retval = format_alter_partition_cmd(node)
-
-    elif is_a(node, 'PartitionCmd'):
-        node = cast(node, 'PartitionCmd')
-
-        retval = format_partition_cmd(node)
-
     elif is_a(node, 'AlterPartitionId'):
         node = cast(node, 'AlterPartitionId')
 
         retval = format_alter_partition_id(node)
-
-    elif is_a(node, 'PgPartRule'):
-        node = cast(node, 'PgPartRule')
-
-        retval = format_pg_part_rule(node)
-
-    elif is_a(node, 'IndexElem'):
-        node = cast(node, 'IndexElem')
-
-        retval = format_index_elem(node)
-
-    elif is_a(node, 'PartitionValuesSpec'):
-        node = cast(node, 'PartitionValuesSpec')
-
-        retval = format_partition_values_spec(node)
-
-    elif is_a(node, 'Partition'):
-        node = cast(node, 'Partition')
-
-        retval = format_partition(node)
 
     elif is_a(node, 'String'):
         node = cast(node, 'Value')
@@ -827,19 +700,6 @@ def is_joinnode(node):
 
     return False
 
-def format_generic_expr_state(node, indent=0):
-    exprstate = node['xprstate']
-    child = cast(node['arg'], 'ExprState')
-    return '''GenericExprState [evalFunc=%(evalFunc)s childEvalFunc= %(childEvalFunc)s]
-\t%(expr)s''' % {
-#\tChild Expr:
-#%(childexpr)s''' % {
-            'expr': format_node(exprstate['expr']),
-            'evalFunc': format_node(exprstate['evalfunc']),
-            'childexpr': format_node(child['expr']),
-            'childEvalFunc': child['evalfunc']
-    }
-
 def format_scalar_array_op_expr(node, indent=0):
     retval = """ScalarArrayOpExpr [opno=%(opno)s opfuncid=%(opfuncid)s useOr=%(useOr)s]
 %(clauses)s""" % {
@@ -850,33 +710,10 @@ def format_scalar_array_op_expr(node, indent=0):
     }
     return add_indent(retval, indent)
 
-def format_a_expr(node, indent=0):
-    retval = "A_Expr [kind=%(kind)s location=%(location)s]" % {
-        'kind': node['kind'],
-        'location': node['location'],
-        }
-
-    retval += format_optional_node_list(node, 'name', newLine=False)
-    retval += format_optional_node_field(node, 'lexpr')
-    retval += format_optional_node_field(node, 'rexpr')
-
-    return add_indent(retval, indent)
-
 def format_a_const(node, indent=0):
-    retval = "A_Const [val=(%(val)s) location=%(location)s]" % {
+    retval = "A_Const [%(val)s]" % {
         'val': format_node(node['val'].address),
-        'location': node['location'],
         }
-
-    return add_indent(retval, indent)
-
-def format_coalesce_expr(node, indent=0):
-    retval = "CoalesceExpr [coalescetype=%(coalescetype)s location=%(location)s]" % {
-        'coalescetype': node['coalescetype'],
-        'location': node['location'],
-        }
-
-    retval += format_optional_node_list(node, 'args')
 
     return add_indent(retval, indent)
 
