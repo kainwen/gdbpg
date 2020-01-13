@@ -1,8 +1,8 @@
-GPDB 6.x GDB commands
+Postgres and GPDB GDB commands
 =======================
 
-GDB commands making debugging Greenplum internals easier. Currently
-this provides a single command 'pgprint' that understand the 'Node'
+GDB commands making debugging Postgres and Greenplum internals easier.
+Currently this provides a single command 'pgprint' that understand the 'Node'
 structures used internally, can can print them semi-intelligently.
 
 Forked from PostgreSQL debugging tool found here:
@@ -25,27 +25,24 @@ E.g. if `plan` is pointing to `(PlannedStmt *)`, you may do this:
 
 and you'll get something like this:
 
-              type: CMD_SELECT
-          query ID: 0
-        param exec: 0
-         returning: False
-     modifying CTE: False
-       can set tag: True
-         transient: False
-      row security: False
-               
-         plan tree: 
-            -> HashJoin (cost=202.125...342.812 rows=2550 width=16)
-                    target list:
-                            TargetEntry (resno=1 resname="id" ...
-                            TargetEntry (resno=2 resname="id" ...
-                            TargetEntry (resno=3 resname="id" ...
-                            TargetEntry (resno=4 resname="id" ...
-                    ...
-
-Limitations
------------
-
-Not all `Node` types are supported (only the subset I recently needed).
-It's rather trivial to add support for more nodes though - just hack the
-`format_node` function a bit.
+PlannedStmt [commandType=CMD_SELECT planGen=PLANGEN_PLANNER queryId=0 hasReturning=false hasModifyingCTE=false canSetTag=true transientPlan=false oneoffPlan=false
+             simplyUpdatable=false dependsOnRole=false parallelModeNeeded=false numSlices=2 slices=0x56059fb60a08 subplan_sliceIds=0x56059fb61458 rewindPlanIDs=0x0
+             nParamExec=0 query_mem=0 metricsQueryType=0 '\000']
+	[planTree] 
+		-> Motion [startup_cost=0 total_cost=2989 plan_rows=96300 plan_width=4 parallel_aware=false plan_node_id=0]
+		          [motionType=MOTIONTYPE_GATHER sendSorted=false motionID=1 collations=0x0]
+			[targetlist] 
+				TargetEntry [resno=1 resname="a" resorigtbl=16392 resorigcol=1]
+					Var [varno=OUTER_VAR varattno=1 vartype=23 varnoold=1 varoattno=1]
+			[flow] Flow [flotype=FLOW_SINGLETON locustype=CdbLocusType_Entry segindex=-1 numsegments=3]
+			[lefttree] 
+				-> SeqScan [startup_cost=0 total_cost=1063 plan_rows=96300 plan_width=4 parallel_aware=false plan_node_id=1]
+				           [scanrelid=1]
+					[targetlist] 
+						TargetEntry [resno=1 resname="a" resorigtbl=16392 resorigcol=1]
+							Var [varno=1 varattno=1 vartype=23 varnoold=1 varoattno=1]
+					[flow] Flow [flotype=FLOW_PARTITIONED locustype=CdbLocusType_Hashed segindex=0 numsegments=3]
+	[rtable] 
+		RangeTblEntry [rtekind=RTE_RELATION relid=16392 relkind='r' jointype=JOIN_INNER funcordinality=false ctelevelsup=0 self_reference=false forceDistRandom=false
+		               lateral=false inFromCl=true requiredPerms=2 selectedCols=0x00000400]
+	[relationOids] OidList: [16392]
