@@ -237,13 +237,13 @@ FORMATTER_OVERRIDES = {
     },
     'PlannerGlobal': {
         'fields':{
-            'subroots': {'formatter': 'debug_minimal_format_node_list'},
+            'subroots': {'formatter': 'minimal_format_node_list'},
         },
     },
     'PlannerInfo': {
         'fields':{
             'parent_root': {'formatter': 'minimal_format_node_field'},
-            'subroots': {'formatter': 'debug_minimal_format_node_list'},
+            'subroots': {'formatter': 'minimal_format_node_list'},
             # TODO: Broken. Need to make dumping these fields possible
             'simple_rel_array': {'visibility': 'never_show'},
             'simple_rte_array': {'visibility': 'never_show'},
@@ -1094,37 +1094,49 @@ def debug_format_regular_field(node, field):
     return node[field]
 
 def debug_format_string_pointer_field(node, field):
-    print("debug_format_string_pointer_field : %s[%s]: %s" % (get_base_node_type(node), field, format_string_pointer_field(node,field)))
-    return format_string_pointer(node, field)
+    print("debug_format_string_pointer_field : %s[%s]: " % (get_base_node_type(node), field), end='')
+    ret = format_string_pointer_field(node,field)
+    print(ret)
+    return ret
 
 def debug_format_char_field(node, field):
-    print("debug_format_char_field: %s[%s]: %s" % (get_base_node_type(node), field, format_char_field(node,field)))
-    return format_char_field(node, field)
+    print("debug_format_char_field: %s[%s]: " % (get_base_node_type(node), field), end='')
+    ret = format_char_field(node,field)
+    print(ret)
+    return ret
 
 def debug_format_bitmapset_field(node, field):
-    print("debug_format_bitmapset_field: %s[%s]: %s" % (get_base_node_type(node), field, format_bitmapset_field(node,field)))
-    return format_bitmapset_field(node, field)
+    print("debug_format_bitmapset_field: %s[%s]: " % (get_base_node_type(node), field), end='')
+    ret = format_bitmapset_field(node,field)
+    print(ret)
+    return ret
 
 def debug_format_varno_field(node, field):
-    print("debug_format_varno_field: %s[%s]: %s" % (get_base_node_type(node), field, format_varno_field(node,field)))
-    return format_varno_field(node, field)
+    print("debug_format_varno_field: %s[%s]: " % (get_base_node_type(node), field), end='')
+    ret = format_varno_field(node,field)
+    print(ret)
+    return ret
 
 def debug_format_optional_node_field(node, fieldname, cast_to=None, skip_tag=False, print_null=False, indent=1):
-    print("debug_format_optional_node_field: %s[%s]: cast_to=%s skip_tag=%s print_null=%s, indent=%s" % (get_base_node_type(node), fieldname,
-        cast_to, skip_tag, print_null, indent))
+    print("debug_format_optional_node_field: %s[%s]: cast_to=%s skip_tag=%s print_null=%s, indent=%s" %
+            (get_base_node_type(node), fieldname, cast_to, skip_tag, print_null, indent), end='')
     ret = format_optional_node_field(node, fieldname, cast_to, skip_tag, True, indent)
     print(ret)
     return ret
 
 def debug_format_optional_node_list(node, fieldname, cast_to=None, skip_tag=False, newLine=True, print_null=False, indent=1):
-    print("debug_format_optional_node_list: %s[%s]: %s" % (get_base_node_type(node), fieldname,
-        format_optional_node_list(node, fieldname, cast_to, skip_tag, newLine, print_null, indent)))
-    return format_optional_node_list(node, fieldname, cast_to, skip_tag, newLine, print_null, indent)
+    print("debug_format_optional_node_list: %s[%s]: cast_to=%s skip_tag=%s print_null=%s, indent=%s" %
+            (get_base_node_type(node), fieldname, cast_to, skip_tag, print_null, indent))
+    ret = format_optional_node_list(node, fieldname, cast_to, skip_tag, newLine, True, indent)
+    print(ret)
+    return ret
 
 def debug_format_optional_oid_list(node, fieldname, skip_tag=False, newLine=False, print_null=False, indent=1):
-    print("debug_format_optional_oid_list: %s[%s]: %s" % (get_base_node_type(node), fieldname,
-        format_optional_oid_list(node, fieldname, skip_tag, newLine, print_null, indent)))
-    return format_optional_oid_list(node, fieldname, newLine, skip_tag, print_null, indent)
+    print("debug_format_optional_oid_list: %s[%s]: cast_to=%s skip_tag=%s print_null=%s, indent=%s" %
+            (get_base_node_type(node), fieldname, cast_to, skip_tag, print_null, indent))
+    ret = format_optional_oid_list(node, fieldname, newLine, skip_tag, print_null, indent)
+    print(ret)
+    return ret
 
 def debug_minimal_format_node_list(node, fieldname, cast_to=None, skip_tag=False, print_null=False, indent=1):
     print("debug_minimal_format_node_list: %s[%s]: cast_to=%s skip_tag=%s print_null=%s, indent=%s" % (get_base_node_type(node), fieldname,
