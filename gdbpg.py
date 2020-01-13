@@ -34,6 +34,7 @@ DEFAULT_DISPLAY_METHODS = {
     'datatype_methods': {
             'char *': 'format_string_pointer_field',
             'const char *': 'format_string_pointer_field',
+            'char': 'format_char_field',
             'Bitmapset *': 'format_bitmapset_field',
             'struct gpmon_packet_t': 'format_gpmon_packet_field',
             'struct timeval': 'format_timeval_field',
@@ -44,6 +45,20 @@ DEFAULT_DISPLAY_METHODS = {
 
 # TODO: generate these overrides in a yaml config file
 FORMATTER_OVERRIDES = {
+    'Aggref': {
+        'fields':{
+            'aggcollid': {'visibility': "not_null"},
+            'inputcollid': {'visibility': "not_null"},
+            'aggtranstype': {'visibility': "not_null"},
+            'location': {'visibility': "never_show"},
+        },
+    },
+    'BoolExpr': {
+        'fields':{
+            'args': {'skip_tag': True},
+            'location': {'visibility': "never_show"},
+        },
+    },
     'CaseWhen': {
         'fields':{
             'location': {'visibility': "never_show"},
@@ -146,6 +161,14 @@ FORMATTER_OVERRIDES = {
             'rel': {'formatter': 'minimal_format_node_field', }
         },
     },
+    'FuncExpr': {
+        'fields':{
+            'args': {'skip_tag': True},
+            'funccollid': {'visibility': "not_null"},
+            'inputcollid': {'visibility': "not_null"},
+            'location': {'visibility': "never_show"},
+        },
+    },
     'FuncExprState': {
         'fields':{
             # TODO: These fields crash gdbpg.py
@@ -178,6 +201,7 @@ FORMATTER_OVERRIDES = {
             'args': {'skip_tag': True},
             'opcollid': {'visibility': "not_null"},
             'inputcollid': {'visibility': "not_null"},
+            'location': {'visibility': 'never_show'},
         },
     },
     'Param': {
@@ -239,6 +263,23 @@ FORMATTER_OVERRIDES = {
             'plan': { 'formatter': 'minimal_format_node_field', },
         },
     },
+    'Query': {
+        'fields':{
+            'result_relation': {'visibility': 'not_null'},
+            'hasAggs': {'visibility': 'not_null'},
+            'hasWindowFuncs': {'visibility': 'not_null'},
+            'hasSubLinks': {'visibility': 'not_null'},
+            'hasDynamicFunctions': {'visibility': 'not_null'},
+            'hasFuncsWithExecRestrictions': {'visibility': 'not_null'},
+            'hasDistinctOn': {'visibility': 'not_null'},
+            'hasRecursive': {'visibility': 'not_null'},
+            'hasModifyingCTE': {'visibility': 'not_null'},
+            'hasForUpdate': {'visibility': 'not_null'},
+            'hasRowSecurity': {'visibility': 'not_null'},
+            'canOptSelectLockingClause': {'visibility': 'not_null'},
+            'isTableValueSelect': {'visibility': 'not_null'},
+        },
+    },
     'RangeTblEntry': {
         'fields': {
             'relid': {'visibility': "not_null"},
@@ -269,10 +310,23 @@ FORMATTER_OVERRIDES = {
             'location': {'visibility': "never_show"},
         },
     },
+    'RelabelType': {
+        'fields': {
+            'arg': {'skip_tag': True},
+            'resultcollid': {'visibility': "not_null"},
+            'resulttypmod': {'visibility': "hide_invalid"},
+            'location': {'visibility': "never_show"},
+        },
+    },
     'RestrictInfo': {
         'fields': {
             'parent_ec': {'formatter': 'minimal_format_node_field', },
             'scansel_cache': {'formatter': 'minimal_format_node_field', }
+        },
+    },
+    'SubLink': {
+        'fields': {
+            'location': {'visibility': "never_show"},
         },
     },
     'TargetEntry': {
@@ -463,16 +517,6 @@ def format_partition(node, indent=0):
 
     return add_indent(retval, indent)
 
-def format_cdb_process(node, indent=0):
-    retval = 'CdbProcess [listenerAddr=%(listenerAddr)s listenerPort=%(listenerPort)s pid=%(pid)s contentid=%(contentid)s]' % {
-        'listenerAddr': getchars(node['listenerAddr']),
-        'listenerPort': node['listenerPort'],
-        'pid': node['pid'],
-        'contentid': node['contentid'],
-    }
-
-    return add_indent(retval, indent)
-
 def format_partition_rule(node, indent=0):
     retval = '''PartitionRule (parruleid=%(parruleid)s paroid=%(paroid)s parchildrelid=%(parchildrelid)s parparentoid=%(parparentoid)s parisdefault=%(parisdefault)s parname=%(parname)s parruleord=%(parruleord)s partemplatespaceId=%(partemplatespaceId)s)''' % {
         'parruleid': node['parruleid'],
@@ -646,11 +690,6 @@ def format_node(node, indent=0):
 
         retval = format_table_like_clause(node)
 
-    elif is_a(node, 'Aggref'):
-        node = cast(node, 'Aggref')
-
-        retval = format_aggref(node)
-
     elif is_a(node, 'A_Expr'):
         node = cast(node, 'A_Expr')
 
@@ -676,25 +715,10 @@ def format_node(node, indent=0):
 
         retval = format_node_list(node, 0, True)
 
-    elif is_a(node, 'CoerceViaIO'):
-        node = cast(node, 'CoerceViaIO')
-
-        retval = format_coerce_via_io(node)
-
     elif is_a(node, 'ScalarArrayOpExpr'):
         node = cast(node, 'ScalarArrayOpExpr')
 
         retval = format_scalar_array_op_expr(node)
-
-    elif is_a(node, 'BoolExpr'):
-        node = cast(node, 'BoolExpr')
-
-        retval = format_bool_expr(node)
-
-    elif is_a(node, 'SubLink'):
-        node = cast(node, 'SubLink')
-
-        retval = format_sublink(node)
 
     elif is_a(node, 'AlterPartitionCmd'):
         node = cast(node, 'AlterPartitionCmd')
@@ -745,11 +769,6 @@ def format_node(node, indent=0):
         node = cast(node, 'PartitionRule')
 
         retval = format_partition_rule(node)
-
-    elif is_a(node, 'CdbProcess'):
-        node = cast(node, 'CdbProcess')
-
-        retval = format_cdb_process(node)
 
     elif is_a(node, 'OidList'):
         retval = 'OidList: %s' % format_oid_list(node)
@@ -821,46 +840,6 @@ def format_generic_expr_state(node, indent=0):
             'childEvalFunc': child['evalfunc']
     }
 
-def format_func_expr(node, indent=0):
-
-    retval = """FuncExpr [funcid=%(funcid)s funcresulttype=%(funcresulttype)s funcretset=%(funcretset)s funcformat=%(funcformat)s""" % {
-        'funcid': node['funcid'],
-        'funcresulttype': node['funcresulttype'],
-        'funcretset': (int(node['funcretset']) == 1),
-        'funcvaridaic': (int(node['funcvariadic']) == 1),
-        'funcformat': node['funcformat'],
-    }
-
-    if node['funccollid'] != 0:
-        retval += ' funccollid=%s' % node['funccollid']
-    if node['inputcollid'] != 0:
-        retval += ' inputcollid=%s' % node['inputcollid']
-
-    retval += ' location=%(location)s]' % {
-        'location': node['location'],
-    }
-
-    retval += format_optional_node_list(node, 'args', skip_tag=True)
-
-    return add_indent(retval, indent)
-
-def format_coerce_via_io(node, indent=0):
-
-    retval = """CoerceViaIO [resulttype=%(resulttype)s coerceformat=%(coerceformat)s location=%(location)s""" % {
-        'resulttype': node['resulttype'],
-        'coerceformat': node['coerceformat'],
-        'location': node['location'],
-    }
-
-    if node['resultcollid'] != 0:
-        retval += ' resultcollid=%s' % node['resultcollid']
-
-    retval += ']'
-
-    retval += format_optional_node_field(node, 'arg', skip_tag=True)
-
-    return add_indent(retval, indent)
-
 def format_scalar_array_op_expr(node, indent=0):
     retval = """ScalarArrayOpExpr [opno=%(opno)s opfuncid=%(opfuncid)s useOr=%(useOr)s]
 %(clauses)s""" % {
@@ -901,25 +880,6 @@ def format_coalesce_expr(node, indent=0):
 
     return add_indent(retval, indent)
 
-def format_bool_expr(node, indent=0):
-
-    retval = 'BoolExpr [op=%s]' % node['boolop']
-    retval += format_optional_node_list(node, 'args', skip_tag=True)
-
-    return add_indent(retval, indent)
-
-def format_sublink(node, indent=0):
-    retval = """SubLink [subLinkType=%(subLinkType)s location=%(location)s]""" % {
-        'subLinkType': node['subLinkType'],
-        'location': (int(node['location']) == 1),
-    }
-
-    retval += format_optional_node_field(node, 'testexpr')
-    retval += format_optional_node_list(node, 'operName')
-    retval += format_optional_node_field(node, 'subselect')
-
-    return add_indent(retval, indent)
-
 def format_sort_group_clause(node, indent=0):
     retval = 'SortGroupClause [tleSortGroupRef=%(tleSortGroupRef)s eqop=%(eqop)s sortop=%(sortop)s nulls_first=%(nulls_first)s hashable=%(hashable)s]' % {
         'tleSortGroupRef': node['tleSortGroupRef'],
@@ -937,36 +897,6 @@ def format_table_like_clause(node):
     retval += format_optional_node_field(node, 'relation')
 
     return retval
-
-def format_aggref(node, indent=0):
-    retval = '''Aggref (aggfnoid=%(fnoid)s aggtype=%(aggtype)s''' % {
-        'fnoid': node['aggfnoid'],
-        'aggtype': node['aggtype'],
-    }
-
-    if node['aggcollid'] != 0:
-        retval += ' aggcollid=%s' % node['aggcollid']
-
-    if node['inputcollid'] != 0:
-        retval += ' inputcollid=%s' % node['inputcollid']
-
-    retval += ''' aggtranstype=%(aggtranstype)s aggstar=%(aggstar)s aggvariadic=%(aggvariadic)s aggkind='%(aggkind)s' agglevelsup=%(agglevelsup)s aggsplit=%(aggsplit)s location=%(location)s)''' % {
-        'aggtranstype': node['aggtranstype'],
-        'aggstar': (int(node['aggstar']) == 1),
-        'aggvariadic': (int(node['aggvariadic']) == 1),
-        'aggkind': format_char(node['aggkind']),
-        'agglevelsup': node['agglevelsup'],
-        'aggsplit': node['aggsplit'],
-        'location': node['location'],
-    }
-
-    retval += format_optional_node_list(node, 'args', skip_tag=True)
-    retval += format_oid_list(node['aggargtypes'])
-    retval += format_optional_node_list(node, 'aggdirectargs')
-    retval += format_optional_node_list(node, 'aggorder')
-    retval += format_optional_node_list(node, 'aggdistinct')
-    retval += format_optional_node_field(node, 'aggfilter')
-    return add_indent(retval, indent)
 
 def is_a(n, t):
     '''checks that the node has type 't' (just like IsA() macro)'''
