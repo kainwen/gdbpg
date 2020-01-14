@@ -36,6 +36,8 @@ DEFAULT_DISPLAY_METHODS = {
             'const char *': 'format_string_pointer_field',
             'Bitmapset *': 'format_bitmapset_field',
             'struct timeval': 'format_timeval_field',
+            'NameData': 'format_namedata_field',
+            'struct nameData': 'format_namedata_field',
     },
     'show_hidden': False,
     'max_recursion_depth': 30
@@ -269,6 +271,7 @@ FORMATTER_OVERRIDES = {
                   'skip_tag': True
                 },
             'plan': { 'formatter': 'minimal_format_node_field', },
+            'state': { 'formatter': 'minimal_format_node_field', },
         },
     },
     'Query': {
@@ -347,6 +350,22 @@ FORMATTER_OVERRIDES = {
             'resjunk': {'visibility': "not_null"},
         },
     },
+    'TupleTableSlot': {
+        'fields': {
+            'tts_tupleDescriptor': {
+                  'field_type': 'node_field',
+                  'formatter': 'format_tuple_descriptor',
+                },
+            'PRIVATE_tts_isnull': {
+                  'field_type': 'node_field',
+                  'formatter': 'format_tts_isnulls',
+                },
+            'PRIVATE_tts_values': {
+                  'field_type': 'node_field',
+                  'formatter': 'format_tts_values',
+                },
+        },
+    },
     'TypeName': {
         'fields': {
             'typeOid': {'visibility': "not_null"},
@@ -408,6 +427,25 @@ FORMATTER_OVERRIDES = {
         },
     },
 
+    # Pseudo nodes
+    'tupleDesc': {
+        'fields': {
+            'tdtypmod': {'visibility': "hide_invalid"},
+            'tdrefcount': {'visibility': "hide_invalid"},
+        },
+    },
+    'FormData_pg_attribute': {
+        'fields': {
+            'attstattarget': {'visibility': "hide_invalid"},
+            'attndims': {'visibility': "not_null"},
+            'attcacheoff': {'visibility': "hide_invalid"},
+            'atttypmod': {'visibility': "hide_invalid"},
+            'attstorage': {'formatter': "format_char_field"},
+            'attalign': {'formatter': "format_char_field"},
+            'attinhcount': {'visibility': "not_null"},
+            'attcollation': {'visibility': "not_null"},
+        },
+    },
 }
 
 
@@ -915,6 +953,9 @@ def format_varno_field(node, field):
 def format_timeval_field(node, field):
     return "%s.%s" %(node[field]['tv_sec'], node[field]['tv_usec'])
 
+def format_namedata_field(node, field):
+    return getchars(node[field]['data'])
+
 def format_optional_node_field(node, fieldname, cast_to=None, skip_tag=False, print_null=False, indent=1):
     if cast_to != None:
         node = cast(node, cast_to)
@@ -1095,6 +1136,128 @@ def minimal_format_memory_context_data_field(node, fieldname, cast_to=None, skip
 
     return retval
 
+def format_pseudo_node_field(node, fieldname, cast_to=None, skip_tag=False, print_null=False, indent=1):
+    if str(node[fieldname]) != '0x0':
+        node_type = node[fieldname].type.strip_typedefs()
+        formatter = NodeFormatter(node[fieldname], pseudo_node=True)
+        node_output = formatter.format()
+
+        if skip_tag == True:
+            return add_indent('%s' % node_output, indent, True)
+        else:
+            retval = '[%s] ' % fieldname
+            if node_output.count('\n') > 0:
+                node_output = add_indent(node_output, 1, True)
+            retval += node_output
+            return add_indent(retval , indent, True)
+    elif print_null == True:
+        return add_indent("[%s] (NULL)" % fieldname, indent, True)
+
+    return ''
+
+# ---
+# TupleTableSlot related dumpers
+def format_tuple_descriptor(node, field, cast_to=None, skip_tag=False, print_null=False, indent=1):
+    natts = node[field]['natts']
+    retval = format_pseudo_node_field(node, field, 'tupleDesc' , skip_tag, print_null, 0)
+    for col in range(0, natts):
+        attr = node[field]['attrs'][col]
+        formatter = LabelNodeFormatter(attr, pseudo_node=True, label='[%s] ' % (col+1))
+        retval += add_indent(formatter.format(), 1, True)
+
+    return add_indent(retval, indent, False)
+
+def format_tts_isnulls(node, field, cast_to=None, skip_tag=False, print_null=False, indent=1):
+    if str(node['tts_tupleDescriptor']) == '0x0' or str(node[field]) == '0x0':
+        if print_null:
+            return '[%s] (NULL)' % field
+        else:
+            return ''
+
+    descr = node['tts_tupleDescriptor'].dereference()
+    natts = descr['natts']
+
+    nullmap, nullmap_bytes = get_tts_nullmap(node, field, natts)
+    retlines = []
+    col = 1
+    for isnull, byte in zip(nullmap, nullmap_bytes):
+        if isnull == None:
+            retlines.append('[%s] %s <invalid byte>' % (col, byte))
+        else:
+            retlines.append('[%s] %s' % (col, isnull))
+        col+=1
+
+    retval = '\n'.join([line for line in retlines])
+
+    if skip_tag:
+        return add_indent('%s' % retval, indent, True)
+    else:
+        retval = '[%s]' % field + add_indent(retval, 1, True)
+        return add_indent(retval, indent, True)
+
+def get_tts_nullmap(node, nullmap_field, natts):
+    if str(node[nullmap_field]) == '0x0':
+        return None
+
+    nullmap = []
+    nullmap_byte = []
+    for col in range(0, natts):
+        if node[nullmap_field][col] not in [0,1]:
+            nullmap.append(None)
+        else:
+            nullmap.append((int(node[field][col]) == 1))
+
+        nullmap_byte.append('0x%x' % node[nullmap_field][col])
+
+    return nullmap, nullmap_byte
+
+def format_tts_values(node, field, cast_to=None, skip_tag=False, print_null=False, indent=1):
+    if str(node['tts_tupleDescriptor']) == '0x0' or str(node[field]) == '0x0':
+        if print_null:
+            return '[%s] (NULL)' % field
+        else:
+            return ''
+
+    descr = node['tts_tupleDescriptor'].dereference()
+    natts = descr['natts']
+    attrs = descr['attrs']
+
+    nullmap, nullmap_bytes = get_tts_nullmap(node, 'PRIVATE_tts_isnull', natts)
+
+    tts_values_list = []
+
+    values = node[field]
+    tts_values_list = []
+    for col in range(0, natts):
+        attr = attrs[col].dereference()
+        tts_values_list.append("[%d] 0x%08x" % (col + 1, values[col]))
+
+    values_retval = '\n'.join([line for line in tts_values_list])
+
+    formatted_tuple_list= []
+    for col in range(0, natts):
+        attr = attrs[col].dereference()
+        formatted_tuple_list.append("[%d] %s" % (col + 1, format_tuple_value(values[col], nullmap[col], attr)))
+
+    formatted_tuples_retval  = '\n'.join([line for line in formatted_tuple_list])
+
+    retval = '[%s]' % field + add_indent(values_retval, 1, True)
+    retval += '\n[values_formatted_tuple]' + add_indent(formatted_tuples_retval, 1, True)
+    return add_indent(retval, indent, True)
+
+def format_tuple_value(value, is_null, attr):
+    typid = attr['atttypid']
+
+    if is_null:
+        return 'NULL'
+    elif typid == 20:
+        return "[int8] %d" % value
+    elif typid == 701:
+        return "[float8] %s" % value.cast(gdb.lookup_type('float8'))
+    else:
+        return "<type %d not_supported>" % typid
+#---
+
 def debug_format_regular_field(node, field):
     print("debug_format_regular_field: %s[%s]: %s" % (get_base_node_type(node), field, node[field]))
     return node[field]
@@ -1155,9 +1318,11 @@ def debug_minimal_format_node_list(node, fieldname, cast_to=None, skip_tag=False
 class NodeFormatter(object):
     # Basic node information
     _node = None
-    __node_type = None
-    __type_str = None
     __parent_node = None
+
+    _type_string = None
+    _base_type = None
+    _node_type = None
 
     # String representations of individual fields in node
     __all_fields = None
@@ -1179,7 +1344,8 @@ class NodeFormatter(object):
     # String representation of the types to match to generate the above lists
     __list_types = None
     __node_types = None
-    def __init__(self, node, typecast=None):
+    def __init__(self, node, typecast=None, pseudo_node=False):
+
         # TODO: get node and list types from yaml config OR check each field
         #       for a node 'signature'
         # TODO: this should be done in a class method
@@ -1189,11 +1355,43 @@ class NodeFormatter(object):
         # GPDB 4.x
         self.__node_types = [("Node",True), ("Expr", True), ("FromExpr", True), ("RangeVar", True), ("TypeName", True), ("ExprContext", True), ("MemoryContext", True), ("struct SelectStmt", True), ("Alias", True), ("struct Plan", True)]
 
-        # TODO: Make the node lookup able to handle inherited types(like Plan nodes)
+        self._pseudo_node = pseudo_node
+        # https://sourceware.org/gdb/current/onlinedocs/gdb/Types-In-Python.html
         if typecast == None:
-            typecast = get_base_node_type(node)
-        self.__type_str = typecast
-        self._node = cast(node, self.type)
+            if self._pseudo_node:
+                pseudo_type = node.type.strip_typedefs()
+                stripped_type = pseudo_type
+                while stripped_type.code in [gdb.TYPE_CODE_PTR, gdb.TYPE_CODE_ARRAY]:
+                    # For a pointer type, the target type is the type of the
+                    # pointed-to object. For an array type (meaning C-like
+                    # arrays), the target type is the type of the elements of
+                    # the array. For a function or method type, the target type
+                    # is the type of the return value. For a complex type, the
+                    # target type is the type of the elements. For a typedef,
+                    # the target type is the aliased type.
+                    stripped_type = stripped_type.target()
+
+                if stripped_type.tag:
+                    self._type_string = stripped_type.tag
+                else:
+                    self._type_string = str(stripped_type)
+                self._base_type = stripped_type
+                self._node_type = pseudo_type
+                # TODO: Why does this work?
+                #if self._node_type.code != gdb.TYPE_CODE_PTR:
+                #    raise Exception("Must use a pointer for pseudo node types")
+            else:
+                self._type_string = get_base_node_type(node)
+                self._base_type = gdb.lookup_type(self._type_string)
+                # TODO: Currently only support dumping pointers to Node types
+                self._node_type = self._base_type.pointer()
+        else:
+            self._type_string = typecast
+            self._base_type = gdb.lookup_type(self.type_string)
+            self._node_type = self._base_type.pointer()
+
+        self._node = node.cast(self._node_type)
+
 
         # Get methods for display
         self.__default_display_methods = DEFAULT_DISPLAY_METHODS
@@ -1201,11 +1399,14 @@ class NodeFormatter(object):
         self.__default_list_visibility = NOT_NULL
         self.__default_node_visibility = NOT_NULL
         self.__default_skip_tag = False
-        self.__formatter_overrides = FORMATTER_OVERRIDES.get(self.type)
+        self.__formatter_overrides = FORMATTER_OVERRIDES.get(self.type_string)
         #print("NodeFormatter:", self.type)
 
     def is_child_node(self):
-        t = gdb.lookup_type(self.type)
+        if self._pseudo_node:
+            return False
+
+        t = gdb.lookup_type(self.type_string)
         first_field = t.values()[0]
 
         if first_field.name == "type":
@@ -1221,7 +1422,7 @@ class NodeFormatter(object):
     def parent_node(self):
         if self.__parent_node == None:
             if self.is_child_node():
-                t = gdb.lookup_type(self.type)
+                t = gdb.lookup_type(self.type_string)
                 first_field = t.values()[0]
 
                 self.__parent_node = NodeFormatter(self._node, str(first_field.type))
@@ -1270,7 +1471,7 @@ class NodeFormatter(object):
         elif field in self.tree_fields:
             return globals()[self.__default_display_methods['tree_fields']]
 
-        raise Exception("Did not find a display method for %s[%s]" % (self.type, field))
+        raise Exception("Did not find a display method for %s[%s]" % (self.type_string, field))
 
 
     def get_display_mode(self, field):
@@ -1304,16 +1505,14 @@ class NodeFormatter(object):
         return self.__default_skip_tag
 
     @property
-    def type(self):
-        if self.__node_type == None:
-            self.__node_type = format_type(self.__type_str)
-        return self.__node_type
+    def type_string(self):
+        return self._type_string
 
     @property
     def fields(self):
         if self.__all_fields == None:
             self.__all_fields = []
-            t = gdb.lookup_type(self.type)
+            t = self._base_type
 
             for index in range(0, len(t.values())):
                 skip = False
@@ -1435,7 +1634,7 @@ class NodeFormatter(object):
         retval = ''
         if prefix != None:
             retval = prefix
-        retval += self.type + ' '
+        retval += self.type_string + ' '
         newline_padding_chars = len(retval)
         formatted_fields = self.format_all_regular_fields(newline_padding_chars+1)
 
@@ -1565,6 +1764,13 @@ class NodeFormatter(object):
 
         return retval
 
+class LabelNodeFormatter(NodeFormatter):
+    def __init__(self, node, typecast=None, pseudo_node=False, label=''):
+        self._label = label
+        super().__init__(node, typecast, pseudo_node)
+    def format(self):
+        return super().format(prefix=self._label)
+
 class PlanStateFormatter(NodeFormatter):
     def format(self):
         return super().format(prefix='-> ')
@@ -1587,10 +1793,31 @@ class PgPrintCommand(gdb.Command):
 
         l = gdb.parse_and_eval(arg_list[0])
 
+       # print(l.type)
+       # print("tag:", l.type.tag)
+       # print("code:", l.type.code)
+       # print("fields:", l.type.fields())
+       # print("values:", l.type.values())
+       # print("reference:", l.type.reference())
+       # print("target:", l.type.target())
+       # print("target tag:", l.type.target().tag)
+       # print("target reference:", l.type.target().reference())
+       # print("strip typedefs:", l.type.strip_typedefs())
+       # print(
+       #    gdb.TYPE_CODE_CHAR,
+       #    gdb.TYPE_CODE_INT,
+       #    gdb.TYPE_CODE_BOOL,
+       #    gdb.TYPE_CODE_FLT,
+       #    gdb.TYPE_CODE_VOID,
+       #    gdb.TYPE_CODE_ENUM)
+
+       # print(gdb.TYPE_CODE_TYPEDEF)
         if not is_node(l):
             print("not a node type")
-
-        print(format_node(l))
-
+            print("running experimental dump...")
+            formatter = NodeFormatter(l, pseudo_node=True)
+            print(formatter.format())
+        else:
+            print(format_node(l))
 
 PgPrintCommand()
