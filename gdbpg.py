@@ -180,6 +180,11 @@ FORMATTER_OVERRIDES = {
             'fp_null': {'visibility': "never_show"},
         },
     },
+    'GenericExprState': {
+        'fields':{
+            'arg': {'skip_tag': True},
+        },
+    },
     # TODO: It would be nice to be able to recurse into memory contexts and
     #       print the tree, but need to make its own NodeFormatter in order
     #       to make its output look like a tree
