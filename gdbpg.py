@@ -192,7 +192,10 @@ FORMATTER_OVERRIDES = {
     #       to make its output look like a tree
     'MemoryContextData': {
         'fields':{
-            'methods': {'visibility': "never_show"},
+            'methods': {
+                    'formatter': "format_pseudo_node_field",
+                    'field_type': "node_field",
+                },
             'parent': {'formatter': "minimal_format_memory_context_data_field"},
             'prevchild': {'formatter': "minimal_format_memory_context_data_field"},
             'firstchild': {'formatter': "minimal_format_memory_context_data_field"},
