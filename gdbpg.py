@@ -522,6 +522,24 @@ def format_type(t, indent=0):
 
     return add_indent(t, indent)
 
+def get_base_datatype(l):
+    stripped_type = l.type.strip_typedefs()
+    while stripped_type.code in [gdb.TYPE_CODE_PTR, gdb.TYPE_CODE_ARRAY]:
+        # from: https://sourceware.org/gdb/current/onlinedocs/gdb/Types-In-Python.html
+        #
+        # 'For a pointer type, the target type is the type of the
+        # pointed-to object. For an array type (meaning C-like
+        # arrays), the target type is the type of the elements of
+        # the array. For a function or method type, the target type
+        # is the type of the return value. For a complex type, the
+        # target type is the type of the elements. For a typedef,
+        # the target type is the aliased type.'
+        stripped_type = stripped_type.target()
+    if stripped_type.tag == None:
+        return str(stripped_type)
+
+    return stripped_type.tag
+
 def is_old_style_list(l):
     try:
         x = l['head']
@@ -1262,7 +1280,10 @@ def format_tuple_value(value, is_null, attr):
 #---
 
 def debug_format_regular_field(node, field):
-    print("debug_format_regular_field: %s[%s]: %s" % (get_base_node_type(node), field, node[field]))
+    node_type = get_base_node_type(node)
+    if node_type == None:
+        node_type = get_base_datatype(node)
+    print("debug_format_regular_field: %s[%s]: %s" % (node_type, field, node[field]))
     return node[field]
 
 def debug_format_string_pointer_field(node, field):
@@ -1359,25 +1380,12 @@ class NodeFormatter(object):
         self.__node_types = [("Node",True), ("Expr", True), ("FromExpr", True), ("RangeVar", True), ("TypeName", True), ("ExprContext", True), ("MemoryContext", True), ("struct SelectStmt", True), ("Alias", True), ("struct Plan", True)]
 
         self._pseudo_node = pseudo_node
-        # https://sourceware.org/gdb/current/onlinedocs/gdb/Types-In-Python.html
         if typecast == None:
             if self._pseudo_node:
                 pseudo_type = node.type.strip_typedefs()
                 stripped_type = pseudo_type
-                while stripped_type.code in [gdb.TYPE_CODE_PTR, gdb.TYPE_CODE_ARRAY]:
-                    # For a pointer type, the target type is the type of the
-                    # pointed-to object. For an array type (meaning C-like
-                    # arrays), the target type is the type of the elements of
-                    # the array. For a function or method type, the target type
-                    # is the type of the return value. For a complex type, the
-                    # target type is the type of the elements. For a typedef,
-                    # the target type is the aliased type.
-                    stripped_type = stripped_type.target()
 
-                if stripped_type.tag:
-                    self._type_string = stripped_type.tag
-                else:
-                    self._type_string = str(stripped_type)
+                self._type_string = get_base_datatype(node)
                 self._base_type = stripped_type
                 self._node_type = pseudo_type
                 # TODO: Why does this work?
