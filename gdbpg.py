@@ -188,6 +188,11 @@ FORMATTER_OVERRIDES = {
             'arg': {'skip_tag': True},
         },
     },
+    'IntoClause': {
+        'fields':{
+            'tableSpaceName': {'visibility': 'not_null'},
+        },
+    },
     # TODO: It would be nice to be able to recurse into memory contexts and
     #       print the tree, but need to make its own NodeFormatter in order
     #       to make its output look like a tree
@@ -298,7 +303,10 @@ FORMATTER_OVERRIDES = {
     'RangeTblEntry': {
         'fields': {
             'relid': {'visibility': "not_null"},
-            'relkind': {'visibility': "not_null"},
+            'relkind': {
+                        'visibility': "not_null",
+                        'formatter': 'format_char_field',
+                    },
             'rellockmode': {'visibility': "not_null"},
             'tablesample': {'visibility': "not_null"},
             'subquery': {'visibility': "not_null"},
@@ -322,6 +330,7 @@ FORMATTER_OVERRIDES = {
         'fields': {
             'catalogname': {'visibility': "not_null"},
             'schemaname': {'visibility': "not_null"},
+            'relpersistence': {'formatter': "format_char_field"},
             'location': {'visibility': "never_show"},
         },
     },
