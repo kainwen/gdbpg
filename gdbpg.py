@@ -38,6 +38,7 @@ DEFAULT_DISPLAY_METHODS = {
             'struct timeval': 'format_timeval_field',
             'NameData': 'format_namedata_field',
             'struct nameData': 'format_namedata_field',
+            'struct ItemPointerData': 'format_item_pointer_data_field',
     },
     'show_hidden': False,
     'max_recursion_depth': 30
@@ -523,7 +524,10 @@ def format_type(t, indent=0):
     return add_indent(t, indent)
 
 def get_base_datatype(l):
-    stripped_type = l.type.strip_typedefs()
+    if isinstance(l, gdb.Type):
+        stripped_type = l.strip_typedefs()
+    else:
+        stripped_type = l.type.strip_typedefs()
     while stripped_type.code in [gdb.TYPE_CODE_PTR, gdb.TYPE_CODE_ARRAY]:
         # from: https://sourceware.org/gdb/current/onlinedocs/gdb/Types-In-Python.html
         #
@@ -535,10 +539,14 @@ def get_base_datatype(l):
         # target type is the type of the elements. For a typedef,
         # the target type is the aliased type.'
         stripped_type = stripped_type.target()
-    if stripped_type.tag == None:
-        return str(stripped_type)
 
-    return stripped_type.tag
+    return stripped_type
+
+def get_base_datatype_string(l):
+    basetype = get_base_datatype(l)
+    if basetype.tag == None:
+        return str(basetype)
+    return basetype.tag
 
 def is_old_style_list(l):
     try:
@@ -725,10 +733,6 @@ def format_node(node, indent=0):
     elif is_statenode(node):
         node_formatter = PlanStateFormatter(node)
         retval += node_formatter.format()
-
-    # TODO: NodeFormatter exceptions in these nodes
-    elif is_a(node, "ColumnRef"):
-        retval = format_type(type_str)
 
     else:
         node_formatter = NodeFormatter(node)
@@ -976,6 +980,16 @@ def format_timeval_field(node, field):
 
 def format_namedata_field(node, field):
     return getchars(node[field]['data'])
+
+def format_item_pointer_data_field(node, field):
+    ip_blkid = node[field]['ip_blkid']
+    block_hi = int(ip_blkid['bi_hi'])
+    block_low = int(ip_blkid['bi_lo'])
+
+    block_id = block_hi << 16
+    block_id += block_low
+
+    return "(%s,%s)" % (block_id, node[field]['ip_posid'])
 
 def format_optional_node_field(node, fieldname, cast_to=None, skip_tag=False, print_null=False, indent=1):
     if cast_to != None:
@@ -1282,7 +1296,7 @@ def format_tuple_value(value, is_null, attr):
 def debug_format_regular_field(node, field):
     node_type = get_base_node_type(node)
     if node_type == None:
-        node_type = get_base_datatype(node)
+        node_type = get_base_datatype_string(node)
     print("debug_format_regular_field: %s[%s]: %s" % (node_type, field, node[field]))
     return node[field]
 
@@ -1342,28 +1356,29 @@ def debug_minimal_format_node_list(node, fieldname, cast_to=None, skip_tag=False
 class NodeFormatter(object):
     # Basic node information
     _node = None
-    __parent_node = None
+    _parent_node = None
 
     _type_string = None
     _base_type = None
     _node_type = None
 
     # String representations of individual fields in node
-    __all_fields = None
+    _all_fields = None
     _regular_fields = None
-    __node_fields = None
-    __list_fields = None
-    __tree_fields = None
+    _node_fields = None
+    _list_fields = None
+    _tree_fields = None
     _ignore_field_types = None
 
     # Some node types are sub-types of other fields, for example a JoinState inherits a PlanState
     __nested_nodes = None
 
-    # Handle extra fields differently than other types
-    # TODO: - remove extra fields from __regular_feilds
-    #       - set a special method to format these fields in a config file
-    __default_regular_display_method = None
-    __formatter_overrides = None
+    _default_display_methods = None
+    _default_regular_visibility = None
+    _default_list_visibility = None
+    _default_node_visibility = None
+    _default_skip_tag = None
+    _formatter_overrides = None
 
     # String representation of the types to match to generate the above lists
     __list_types = None
@@ -1373,11 +1388,8 @@ class NodeFormatter(object):
         # TODO: get node and list types from yaml config OR check each field
         #       for a node 'signature'
         # TODO: this should be done in a class method
-        self.__list_types = [("List",True)]
-        # Postgres
-        #self.__node_types = [("Node",True), ("Expr", True), ("FromExpr", True), ("OnConflictExpr", True), ("RangeVar", True), ("TypeName", True), ("ExprContext", True), ("MemoryContext", True), ("CollateClause", True), ("struct SelectStmt", True), ("Alias", True), ("struct Plan", True)]
-        # GPDB 4.x
-        self.__node_types = [("Node",True), ("Expr", True), ("FromExpr", True), ("RangeVar", True), ("TypeName", True), ("ExprContext", True), ("MemoryContext", True), ("struct SelectStmt", True), ("Alias", True), ("struct Plan", True)]
+        self.__list_types = ["List"]
+        self.__node_types = ["Node"]
 
         self._pseudo_node = pseudo_node
         if typecast == None:
@@ -1385,8 +1397,8 @@ class NodeFormatter(object):
                 pseudo_type = node.type.strip_typedefs()
                 stripped_type = pseudo_type
 
-                self._type_string = get_base_datatype(node)
-                self._base_type = stripped_type
+                self._type_string = get_base_datatype_string(node)
+                self._base_type = get_base_datatype(node)
                 self._node_type = pseudo_type
                 # TODO: Why does this work?
                 #if self._node_type.code != gdb.TYPE_CODE_PTR:
@@ -1394,7 +1406,6 @@ class NodeFormatter(object):
             else:
                 self._type_string = get_base_node_type(node)
                 self._base_type = gdb.lookup_type(self._type_string)
-                # TODO: Currently only support dumping pointers to Node types
                 self._node_type = self._base_type.pointer()
         else:
             self._type_string = typecast
@@ -1405,12 +1416,12 @@ class NodeFormatter(object):
 
 
         # Get methods for display
-        self.__default_display_methods = DEFAULT_DISPLAY_METHODS
-        self.__default_regular_visibility = ALWAYS_SHOW
-        self.__default_list_visibility = NOT_NULL
-        self.__default_node_visibility = NOT_NULL
-        self.__default_skip_tag = False
-        self.__formatter_overrides = FORMATTER_OVERRIDES.get(self.type_string)
+        self._default_display_methods = DEFAULT_DISPLAY_METHODS
+        self._default_regular_visibility = ALWAYS_SHOW
+        self._default_list_visibility = NOT_NULL
+        self._default_node_visibility = NOT_NULL
+        self._default_skip_tag = False
+        self._formatter_overrides = FORMATTER_OVERRIDES.get(self.type_string)
         #print("NodeFormatter:", self.type)
 
     def is_child_node(self):
@@ -1431,25 +1442,25 @@ class NodeFormatter(object):
 
     @property
     def parent_node(self):
-        if self.__parent_node == None:
+        if self._parent_node == None:
             if self.is_child_node():
                 t = gdb.lookup_type(self.type_string)
                 first_field = t.values()[0]
 
-                self.__parent_node = NodeFormatter(self._node, str(first_field.type))
-        return self.__parent_node
+                self._parent_node = NodeFormatter(self._node, str(first_field.type))
+        return self._parent_node
 
 
     def get_datatype_override(self, field):
-        if self.__formatter_overrides != None:
-            datatype_overrides = self.__formatter_overrides.get('datatype_methods')
+        if self._formatter_overrides != None:
+            datatype_overrides = self._formatter_overrides.get('datatype_methods')
             if datatype_overrides != None:
                 return datatype_overrides.get(str(self.field_datatype(field)))
         return None
 
     def get_field_override(self, field, override_type):
-        if self.__formatter_overrides != None:
-            field_overrides = self.__formatter_overrides.get('fields')
+        if self._formatter_overrides != None:
+            field_overrides = self._formatter_overrides.get('fields')
             if field_overrides != None:
                 field_override = field_overrides.get(field)
                 if field_override != None:
@@ -1469,18 +1480,18 @@ class NodeFormatter(object):
             return globals()[datatype_override_method]
 
         # Check if this datatype has a generic dumping method
-        default_type_method = self.__default_display_methods['datatype_methods'].get(str(self.field_datatype(field)))
+        default_type_method = self._default_display_methods['datatype_methods'].get(str(self.field_datatype(field)))
         if default_type_method != None:
             return globals()[default_type_method]
 
         if field in self.regular_fields:
-            return globals()[self.__default_display_methods['regular_fields']]
+            return globals()[self._default_display_methods['regular_fields']]
         elif field in self.node_fields:
-            return globals()[self.__default_display_methods['node_fields']]
+            return globals()[self._default_display_methods['node_fields']]
         elif field in self.list_fields:
-            return globals()[self.__default_display_methods['list_fields']]
+            return globals()[self._default_display_methods['list_fields']]
         elif field in self.tree_fields:
-            return globals()[self.__default_display_methods['tree_fields']]
+            return globals()[self._default_display_methods['tree_fields']]
 
         raise Exception("Did not find a display method for %s[%s]" % (self.type_string, field))
 
@@ -1488,7 +1499,7 @@ class NodeFormatter(object):
     def get_display_mode(self, field):
         # If the global 'show_hidden' is set, then this command shal always
         # return ALWAYS_SHOW
-        if self.__default_display_methods['show_hidden'] == True:
+        if self._default_display_methods['show_hidden'] == True:
             return ALWAYS_SHOW
 
         override_string = self.get_field_override(field, 'visibility')
@@ -1496,24 +1507,24 @@ class NodeFormatter(object):
             return override_string
 
         if field in self.regular_fields:
-            return self.__default_regular_visibility
+            return self._default_regular_visibility
         if field in self.list_fields:
-            return self.__default_list_visibility
+            return self._default_list_visibility
         if field in self.node_fields:
-            return self.__default_node_visibility
+            return self._default_node_visibility
 
         return ALWAYS_SHOW
 
     def is_skip_tag(self, field):
         # If the global 'show_hidden' is set, always show tag
-        if self.__default_display_methods['show_hidden'] == True:
+        if self._default_display_methods['show_hidden'] == True:
             return False
 
         skip_tag = self.get_field_override(field, 'skip_tag')
         if skip_tag != None:
             return skip_tag
 
-        return self.__default_skip_tag
+        return self._default_skip_tag
 
     @property
     def type_string(self):
@@ -1521,8 +1532,8 @@ class NodeFormatter(object):
 
     @property
     def fields(self):
-        if self.__all_fields == None:
-            self.__all_fields = []
+        if self._all_fields == None:
+            self._all_fields = []
             t = self._base_type
 
             for index in range(0, len(t.values())):
@@ -1533,8 +1544,8 @@ class NodeFormatter(object):
                 #       This seems to conflict with the visibility settings
                 # Fields that are to be ignored
                 if self._ignore_field_types is not None:
-                    for tag, is_pointer in self._ignore_field_types:
-                        if self.is_type(field, tag, is_pointer):
+                    for tag in self._ignore_field_types:
+                        if self.is_type(field, tag):
                             skip = True
 
                 if index == 0:
@@ -1551,72 +1562,69 @@ class NodeFormatter(object):
                 if skip:
                     continue
 
-                self.__all_fields.append(field.name)
+                self._all_fields.append(field.name)
 
-        return self.__all_fields
+        return self._all_fields
 
-    # TODO: any given field should ONLY be in one of these lists, so I need
-    # to decide on an order of precidence for these lists
     @property
     def list_fields(self):
-        if self.__list_fields == None:
-            self.__list_fields = []
+        if self._list_fields == None:
+            self._list_fields = []
 
             for f in self.fields:
                 # Honor overrides before all else
                 override_string = self.get_field_override(f, 'field_type')
                 if override_string != None:
                     if override_string == 'list_field':
-                        self.__list_fields.append(f)
+                        self._list_fields.append(f)
                     else:
                         continue
 
                 v = self._node[f]
-                for field, is_pointer in self.__list_types:
-                    if self.is_type(v, field, is_pointer):
-                        self.__list_fields.append(f)
+                for field in self.__list_types:
+                    if self.is_type(v, field):
+                        self._list_fields.append(f)
 
-        return self.__list_fields
+        return self._list_fields
 
     @property
     def node_fields(self):
-        if self.__node_fields == None:
-            self.__node_fields = []
+        if self._node_fields == None:
+            self._node_fields = []
 
             for f in self.fields:
                 override_string = self.get_field_override(f, 'field_type')
                 if override_string != None:
                     if override_string == 'node_field':
-                        self.__node_fields.append(f)
+                        self._node_fields.append(f)
                     else:
                         continue
 
                 v = self._node[f]
-                for field, is_pointer in self.__node_types:
-                    if self.is_type(v, field, is_pointer):
-                        self.__node_fields.append(f)
+                for field in self.__node_types:
+                    if self.is_type(v, field):
+                        self._node_fields.append(f)
 
                 if is_node(v):
                     if f not in self.list_fields:
-                        self.__node_fields.append(f)
+                        self._node_fields.append(f)
 
-        return self.__node_fields
+        return self._node_fields
 
     @property
     def tree_fields(self):
-        if self.__tree_fields == None:
-            self.__tree_fields = []
+        if self._tree_fields == None:
+            self._tree_fields = []
             for f in self.fields:
                 override_string = self.get_field_override(f, 'field_type')
                 if override_string != None:
                     if override_string == 'tree_field':
-                        self.__tree_fields.append(f)
+                        self._tree_fields.append(f)
                     else:
                         continue
 
-        return self.__tree_fields
+        return self._tree_fields
 
-    # TODO: Regular fields should be able to be overridden to other data types too
     @property
     def regular_fields(self):
         if self._regular_fields == None:
@@ -1626,17 +1634,9 @@ class NodeFormatter(object):
 
         return self._regular_fields
 
-    # TODO: should this be a class method?
-    # TODO: This is definitely broken, as lookup_type behaves differently
-    #       for different versions of gdb. Need to figure out a portable
-    #       way to do this
-    def is_type(self, value, type_name, is_pointer):
+    def is_type(self, value, type_name):
         t = gdb.lookup_type(type_name)
-        if(is_pointer):
-            t = t.pointer()
-        return (str(value.type) == str(t))
-        # This doesn't work for list types for some reason...
-        # return (gdb.types.get_basic_type(value.type) == gdb.types.get_basic_type(t))
+        return (get_base_datatype(value) == get_base_datatype(t))
 
     def field_datatype(self, field):
         return gdb.types.get_basic_type(self._node[field].type)
@@ -1755,15 +1755,15 @@ class NodeFormatter(object):
         return formatted_fields
 
 
-    def ignore_type(self, field, is_pointer):
+    def ignore_type(self, field):
         if self._ignore_field_types is None:
             self._ignore_field_types = []
-        self._ignore_field_types.append((field, is_pointer))
+        self._ignore_field_types.append(field)
 
         # reset list of all fields
-        self.__list_fields = None
+        self._list_fields = None
         self._regular_fields = None
-        self.__all_fields = None
+        self._all_fields = None
 
     def format_tree_nodes(self):
         retval = ""
@@ -1804,25 +1804,6 @@ class PgPrintCommand(gdb.Command):
 
         l = gdb.parse_and_eval(arg_list[0])
 
-       # print(l.type)
-       # print("tag:", l.type.tag)
-       # print("code:", l.type.code)
-       # print("fields:", l.type.fields())
-       # print("values:", l.type.values())
-       # print("reference:", l.type.reference())
-       # print("target:", l.type.target())
-       # print("target tag:", l.type.target().tag)
-       # print("target reference:", l.type.target().reference())
-       # print("strip typedefs:", l.type.strip_typedefs())
-       # print(
-       #    gdb.TYPE_CODE_CHAR,
-       #    gdb.TYPE_CODE_INT,
-       #    gdb.TYPE_CODE_BOOL,
-       #    gdb.TYPE_CODE_FLT,
-       #    gdb.TYPE_CODE_VOID,
-       #    gdb.TYPE_CODE_ENUM)
-
-       # print(gdb.TYPE_CODE_TYPEDEF)
         if not is_node(l):
             print("not a node type")
             print("running experimental dump...")
