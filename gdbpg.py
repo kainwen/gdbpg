@@ -1066,6 +1066,8 @@ def format_node(node, indent=0):
         retval = format_plan_tree(node)
 
     # TODO: NodeFormatter exceptions in these nodes
+    elif is_a(node, "ColumnRef"):
+        retval = format_type(type_str)
 
     else:
         node_formatter = NodeFormatter(node)
