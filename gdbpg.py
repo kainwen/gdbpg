@@ -267,22 +267,6 @@ FORMATTER_OVERRIDES = {
             'upper_targets': {'formatter': 'minimal_format_node_field'},
         },
     },
-    'PlanState': {
-        'fields': {
-            'lefttree': {
-                  'field_type': 'tree_field',
-                  'visibility': 'not_null',
-                  'skip_tag': True
-                },
-            'righttree': {
-                  'field_type': 'tree_field',
-                  'visibility': 'not_null',
-                  'skip_tag': True
-                },
-            'plan': { 'formatter': 'minimal_format_node_field', },
-            'state': { 'formatter': 'minimal_format_node_field', },
-        },
-    },
     'Query': {
         'fields':{
             'result_relation': {'visibility': 'not_null'},
@@ -428,6 +412,39 @@ FORMATTER_OVERRIDES = {
             'senderSliceInfo': {'visibility': "not_null"},
         },
     },
+
+    # State Nodes
+    'PlanState': {
+        'fields': {
+            'lefttree': {
+                  'field_type': 'tree_field',
+                  'visibility': 'not_null',
+                  'skip_tag': True
+                },
+            'righttree': {
+                  'field_type': 'tree_field',
+                  'visibility': 'not_null',
+                  'skip_tag': True
+                },
+            'plan': { 'formatter': 'minimal_format_node_field', },
+            'state': { 'formatter': 'minimal_format_node_field', },
+            'instrument': {
+                  'field_type': 'node_field',
+                  'formatter': 'format_pseudo_node_field',
+                },
+            # GPDB only:
+            'gpmon_pkt': {'visibility': 'never_show'},
+        },
+    },
+    'AggState': {
+        'fields': {
+            'hashiter': {
+                  'field_type': 'node_field',
+                  'formatter': 'format_pseudo_node_field',
+                },
+        },
+    },
+
     # GPDB Specific Partition related nodes
     'PartitionBy': {
         'fields': {
@@ -470,57 +487,6 @@ JoinNodes = ['NestLoop', 'MergeJoin', 'HashJoin', 'Join', 'NestLoopState',
              'MergeJoinState', 'HashJoinState', 'JoinState']
 
 recursion_depth = 0
-
-def format_alter_partition_id(node, indent=0):
-    if (str(node) == '0x0'):
-        return '(NIL)'
-
-    retval = 'AlterPartitionId (idtype=%(idtype)s location=%(location)s)' % {
-        'idtype': node['idtype'],
-        'location': node['location']
-    }
-
-    if (str(node['partiddef']) != '0x0'):
-        if is_a(node['partiddef'], 'List'):
-            partdef = '\n[partiddef]\n'
-            partdef += add_indent('%s' % format_node_list(cast(node['partiddef'], 'List'), 0, True),1)
-            retval += add_indent(partdef, 1)
-        elif is_a(node['partiddef'], 'String'):
-            partdef = '\n[partiddef]'
-            partdef += add_indent('String: %s' % node['partiddef'], 1)
-            retval += add_indent(partdef, 1)
-
-    return add_indent(retval, indent)
-
-def format_partition_rule(node, indent=0):
-    retval = '''PartitionRule (parruleid=%(parruleid)s paroid=%(paroid)s parchildrelid=%(parchildrelid)s parparentoid=%(parparentoid)s parisdefault=%(parisdefault)s parname=%(parname)s parruleord=%(parruleord)s partemplatespaceId=%(partemplatespaceId)s)''' % {
-        'parruleid': node['parruleid'],
-        'paroid': node['paroid'],
-        'parchildrelid': node['parchildrelid'],
-        'parparentoid': node['parparentoid'],
-        'parisdefault': (int(node['parisdefault']) == 1),
-        'parname': node['parname'],
-        'parruleord': node['parruleord'],
-        'partemplatespaceId': node['partemplatespaceId'],
-    }
-    if (str(node['parrangestart']) != '0x0'):
-        retval += '\n\t[parrangestart parrangestartincl=%(parrangestartincl)s] %(parrangestart)s' % {
-            'parrangestart': format_node_list(cast(node['parrangestart'], 'List'), 1, True),
-            'parrangestartincl': (int(node['parrangestartincl']) == 1),
-        }
-
-    if (str(node['parrangeend']) != '0x0'):
-        retval += '\n\t[parrangeend parrangeendincl=%(parrangeendincl)s] %(parrangeend)s' % {
-            'parrangeend': format_node_list(cast(node['parrangeend'], 'List'), 0, True),
-            'parrangeendincl': (int(node['parrangeendincl']) == 1),
-        }
-
-    retval += format_optional_node_list(node, 'parrangeevery')
-    retval += format_optional_node_list(node, 'parlistvalues')
-    retval += format_optional_node_list(node, 'parreloptions')
-    retval += format_optional_node_field(node, 'children')
-
-    return add_indent(retval, indent)
 
 def format_type(t, indent=0):
     'strip the leading T_ from the node type tag'
@@ -666,31 +632,24 @@ def max_depth_exceeded():
 
 def format_node(node, indent=0):
     'format a single Node instance (only selected Node types supported)'
+
+    # Check the recursion depth
     global recursion_depth
-    recursion_depth += 1
     if max_depth_exceeded():
-        recursion_depth -= 1
         if is_node(node):
+            node = cast(node, 'Node')
             return "%s %s <max_depth_exceeded>" % (format_type(node['type']), str(node))
         else:
             return "%s <max_depth_exceeded>" % str(node)
+
+    recursion_depth += 1
 
     if str(node) == '0x0':
         return add_indent('(NULL)', indent)
 
     retval = ''
 
-    if is_a(node, 'SortGroupClause'):
-        node = cast(node, 'SortGroupClause')
-
-        retval = format_sort_group_clause(node)
-
-    elif is_a(node, 'TableLikeClause'):
-        node = cast(node, 'TableLikeClause')
-
-        retval = format_table_like_clause(node)
-
-    elif is_a(node, 'A_Const'):
+    if is_a(node, 'A_Const'):
         node = cast(node, 'A_Const')
 
         retval = format_a_const(node)
@@ -699,16 +658,6 @@ def format_node(node, indent=0):
         node = cast(node, 'List')
 
         retval = format_node_list(node, 0, True)
-
-    elif is_a(node, 'ScalarArrayOpExpr'):
-        node = cast(node, 'ScalarArrayOpExpr')
-
-        retval = format_scalar_array_op_expr(node)
-
-    elif is_a(node, 'AlterPartitionId'):
-        node = cast(node, 'AlterPartitionId')
-
-        retval = format_alter_partition_id(node)
 
     elif is_a(node, 'String'):
         node = cast(node, 'Value')
@@ -719,11 +668,6 @@ def format_node(node, indent=0):
         node = cast(node, 'Value')
 
         retval = 'Integer [%s]' % node['val']['ival']
-
-    elif is_a(node, 'PartitionRule'):
-        node = cast(node, 'PartitionRule')
-
-        retval = format_partition_rule(node)
 
     elif is_a(node, 'OidList'):
         retval = 'OidList: %s' % format_oid_list(node)
@@ -778,40 +722,12 @@ def is_joinnode(node):
 
     return False
 
-def format_scalar_array_op_expr(node, indent=0):
-    retval = """ScalarArrayOpExpr [opno=%(opno)s opfuncid=%(opfuncid)s useOr=%(useOr)s]
-%(clauses)s""" % {
-        'opno': node['opno'],
-        'opfuncid': node['opfuncid'],
-        'useOr': (int(node['useOr']) == 1),
-        'clauses': format_node_list(node['args'], 1, True)
-    }
-    return add_indent(retval, indent)
-
 def format_a_const(node, indent=0):
     retval = "A_Const [%(val)s]" % {
         'val': format_node(node['val'].address),
         }
 
     return add_indent(retval, indent)
-
-def format_sort_group_clause(node, indent=0):
-    retval = 'SortGroupClause [tleSortGroupRef=%(tleSortGroupRef)s eqop=%(eqop)s sortop=%(sortop)s nulls_first=%(nulls_first)s hashable=%(hashable)s]' % {
-        'tleSortGroupRef': node['tleSortGroupRef'],
-        'eqop': node['eqop'],
-        'sortop': node['sortop'],
-        'nulls_first': (int(node['nulls_first']) == 1),
-        'hashable': (int(node['hashable']) == 1),
-    }
-
-    return add_indent(retval, indent)
-
-def format_table_like_clause(node):
-    retval = "TableLikeClause [options=%08x]" % int(node['options'])
-
-    retval += format_optional_node_field(node, 'relation')
-
-    return retval
 
 def is_a(n, t):
     '''checks that the node has type 't' (just like IsA() macro)'''
@@ -855,7 +771,6 @@ def cast(node, type_name):
     t = gdb.lookup_type(type_name)
     return node.cast(t.pointer())
 
-# TODO: If this is a compound node type, it should return the base type
 def get_base_node_type(node):
     if is_node(node):
         node = cast(node, "Node")
@@ -914,6 +829,7 @@ def get_list_fields(node):
             if is_type(v, field, is_pointer):
                 fields.append(v.name)
     return fields
+
 def format_regular_field(node, field):
     return node[field]
 
@@ -1202,6 +1118,9 @@ def format_pseudo_node_field(node, fieldname, cast_to=None, skip_tag=False, prin
 # ---
 # TupleTableSlot related dumpers
 def format_tuple_descriptor(node, field, cast_to=None, skip_tag=False, print_null=False, indent=1):
+    if str(node[field]) == '0x0':
+        return '[%s] (NULL)' % field
+
     natts = node[field]['natts']
     retval = format_pseudo_node_field(node, field, 'tupleDesc' , skip_tag, print_null, 0)
     for col in range(0, natts):
@@ -1306,7 +1225,11 @@ def debug_format_regular_field(node, field):
     node_type = get_base_node_type(node)
     if node_type == None:
         node_type = get_base_datatype_string(node)
-    print("debug_format_regular_field: %s[%s]: %s" % (node_type, field, node[field]))
+    base_field_type = get_base_datatype_string(node[field])
+    gdb_basic_type = gdb.types.get_basic_type(node[field].type)
+    field_type = str(node[field].type)
+    print("debug_format_regular_field: (field_type: %s gdb.types.get_basic_type: %s, base_field_type: %s) %s[%s]: %s" 
+            % (field_type, gdb_basic_type, base_field_type, node_type, field, node[field]))
     return node[field]
 
 def debug_format_string_pointer_field(node, field):
@@ -1361,6 +1284,13 @@ def debug_minimal_format_node_list(node, fieldname, cast_to=None, skip_tag=False
     print(ret)
     return ret
 
+def debug_format_pseudo_node_field(node, fieldname, cast_to=None, skip_tag=False, print_null=False, indent=1):
+    print("debug_minimal_format_node_list: (%s) %s[%s]: cast_to=%s skip_tag=%s print_null=%s, indent=%s" % (get_base_datatype_string(node[fieldname]), get_base_datatype_string(node), fieldname,
+        cast_to, skip_tag, print_null, indent))
+    ret = format_pseudo_node_field(node, fieldname, cast_to, skip_tag, True, indent)
+    print(ret)
+    return ret
+
 
 class NodeFormatter(object):
     # Basic node information
@@ -1390,15 +1320,15 @@ class NodeFormatter(object):
     _formatter_overrides = None
 
     # String representation of the types to match to generate the above lists
-    __list_types = None
-    __node_types = None
+    _list_types = None
+    _node_types = None
     def __init__(self, node, typecast=None, pseudo_node=False):
 
         # TODO: get node and list types from yaml config OR check each field
         #       for a node 'signature'
         # TODO: this should be done in a class method
-        self.__list_types = ["List"]
-        self.__node_types = ["Node"]
+        self._list_types = ["List"]
+        self._node_types = ["Node"]
 
         self._pseudo_node = pseudo_node
         if typecast == None:
@@ -1466,6 +1396,7 @@ class NodeFormatter(object):
             if datatype_overrides != None:
                 return datatype_overrides.get(str(self.field_datatype(field)))
         return None
+
 
     def get_field_override(self, field, override_type):
         if self._formatter_overrides != None:
@@ -1590,7 +1521,7 @@ class NodeFormatter(object):
                         continue
 
                 v = self._node[f]
-                for field in self.__list_types:
+                for field in self._list_types:
                     if self.is_type(v, field):
                         self._list_fields.append(f)
 
@@ -1610,7 +1541,7 @@ class NodeFormatter(object):
                         continue
 
                 v = self._node[f]
-                for field in self.__node_types:
+                for field in self._node_types:
                     if self.is_type(v, field):
                         self._node_fields.append(f)
 
